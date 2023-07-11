@@ -11,6 +11,9 @@ from ._scanvi import SCANVI
 from ._scvi import SCVI
 from ._totalvi import TOTALVI
 
+from ._composcvi import compoSCVI
+from ._nichescvi import nicheSCVI
+
 __all__ = [
     "SCVI",
     "TOTALVI",
@@ -24,4 +27,6 @@ __all__ = [
     "AmortizedLDA",
     "utils",
     "JaxSCVI",
+    "compoSCVI",
+    "nicheSCVI",
 ]

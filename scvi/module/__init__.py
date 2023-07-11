@@ -10,6 +10,9 @@ from ._totalvae import TOTALVAE
 from ._vae import LDVAE, VAE
 from ._vaec import VAEC
 
+from ._compovae import compoVAE
+from ._nichevae import nicheVAE
+
 __all__ = [
     "VAE",
     "LDVAE",
@@ -23,4 +26,6 @@ __all__ = [
     "MULTIVAE",
     "AmortizedLDAPyroModule",
     "JaxVAE",
+    "compoVAE",
+    "nicheVAE",
 ]
