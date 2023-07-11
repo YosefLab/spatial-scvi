@@ -241,10 +241,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_decoder_kwargs,
         )
 
-        # cell type decoder goes from n_latent-dimensional space to n_cell_types-d data
-        self.cell_type_decoder = NicheDecoder(
-            n_input_decoder,
-            n_input_decoder,
+        self.niche_decoder = NicheDecoder(
+            n_input=n_input_decoder,
+            n_output=n_latent_z1,
+            k_nn=k_nn,
             # n_cat_list=cat_list,
             n_cat_list=None,
             n_layers=n_layers,
@@ -483,13 +483,14 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
         # niche_composition, _ = self.cell_type_decoder(decoder_input,*categorical_input) #or y, Idk.
-        niche_composition, _ = self.cell_type_decoder(decoder_input)  # or y, Idk.
+        niche_mean, niche_variance = self.niche_decoder(decoder_input)  # or y, Idk.
 
         return {
             "px": px,
             "pl": pl,
             "pz": pz,
-            "nc": niche_composition,
+            "niche_mean": niche_mean,
+            "niche_variance": niche_variance,
         }
 
     def loss(
@@ -501,9 +502,17 @@ class nicheVAE(BaseMinifiedModeModuleClass):
     ):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
-        ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
 
-        ct_classif_loss = F.cross_entropy(generative_outputs["nc"], ct)
+        z1_mean = tensors[REGISTRY_KEYS.Z1_mean_KEY]
+        z1_var = tensors[REGISTRY_KEYS.Z1_var_KEY]
+
+        cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY]
+        niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
+
+        niche_mean = generative_outputs["niche_mean"]
+        niche_variance = generative_outputs["niche_variance"]
+
+        kl_divergence_niche = 0
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
@@ -525,7 +534,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         loss = (
             torch.mean(reconst_loss + weighted_kl_local)
-            + self.ce_weight * ct_classif_loss
+            + self.niche_kl_weight * kl_divergence_niche
         )
         # loss = ct_classif_loss
 
@@ -540,10 +549,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             loss=loss,
             reconstruction_loss=reconst_loss,
             kl_local=kl_local,
-            classification_loss=ct_classif_loss,
-            true_labels=ct,
-            logits=generative_outputs["nc"],
-            extra_metrics={"CE": ct_classif_loss},
+            extra_metrics={"niche_kl": kl_divergence_niche},
         )
 
     @torch.inference_mode()

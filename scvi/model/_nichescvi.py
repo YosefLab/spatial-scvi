@@ -106,6 +106,10 @@ class nicheSCVI(
         self,
         adata: AnnData,
         # n_cell_types: int,
+        ###########
+        k_nn: int,  # TODO access th obsm keys to infer these parameters from the data!
+        n_latent_z1: int,
+        ###########
         niche_kl_weight: float = 1.0,
         n_hidden: int = 128,
         n_latent: int = 10,
@@ -138,6 +142,10 @@ class nicheSCVI(
         self.module = self._module_cls(
             n_input=self.summary_stats.n_vars,
             # n_cell_types=n_cell_types,
+            ###########
+            k_nn=k_nn,  # TODO access th obsm keys to infer these parameters from the data!
+            n_latent_z1=n_latent_z1,
+            ###########
             niche_kl_weight=niche_kl_weight,
             n_batch=n_batch,
             n_labels=self.summary_stats.n_labels,
@@ -262,6 +270,7 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         categorical_covariate_keys: Optional[List[str]] = None,
         continuous_covariate_keys: Optional[List[str]] = None,
+        cell_index_key="cell_index",
         **kwargs,
     ):
         """%(summary)s.
@@ -278,6 +287,7 @@ class nicheSCVI(
         """
 
         adata.obsm[niche_indexes_key] = np.zeros((adata.n_obs, k_nn))
+        adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
 
         setup_method_args = cls._get_setup_method_args(**locals())
         anndata_fields = [
@@ -297,6 +307,9 @@ class nicheSCVI(
             ObsmField(REGISTRY_KEYS.Z1_mean_KEY, latent_mean_key),
             ObsmField(REGISTRY_KEYS.Z1_var_KEY, latent_var_key),
             ObsmField(REGISTRY_KEYS.NICHE_INDEXES_KEY, niche_indexes_key),
+            NumericalObsField(
+                REGISTRY_KEYS.INDICES_KEY, cell_index_key, required=False
+            ),
         ]
 
         # register new fields if the adata is minified

@@ -622,7 +622,7 @@ class NicheDecoder(nn.Module):
         # Parameters for latent distribution
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
-        p_v = torch.nn.Softplus(self.var_decoder(p))  # change exp to softplus
+        p_v = torch.nn.Softplus()(self.var_decoder(p))  # change exp to softplus
         return p_m, p_v
 
 
