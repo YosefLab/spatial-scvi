@@ -580,7 +580,7 @@ class NicheDecoder(nn.Module):
         self,
         n_input: int,
         n_output: int,
-        k_nn: int,
+        n_niche_components: int,
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,

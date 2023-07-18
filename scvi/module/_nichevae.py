@@ -105,10 +105,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
     def __init__(
         self,
         n_input: int,
-        # n_cell_types: int,
         ###########
-        k_nn: int,  # TODO access th obsm keys to infer these parameters from the data!
         n_latent_z1: int,
+        n_cell_types: Optional[int],
+        k_nn: Optional[int],
+        niche_components: Literal["cell_type", "knn"],
         ###########
         niche_kl_weight: float = 1.0,
         n_batch: int = 0,
@@ -150,6 +151,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         # Automatically deactivate if useless
         self.n_batch = n_batch
         self.n_labels = n_labels
+        self.n_latent_z1 = n_latent_z1
         self.latent_distribution = latent_distribution
         self.encode_covariates = encode_covariates
 
@@ -241,10 +243,13 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_decoder_kwargs,
         )
 
+        self.n_niche_components = (
+            n_cell_types if niche_components == "cell_type" else k_nn
+        )
         self.niche_decoder = NicheDecoder(
             n_input=n_input_decoder,
             n_output=n_latent_z1,
-            k_nn=k_nn,
+            n_niche_components=self.n_niche_components,
             # n_cat_list=cat_list,
             n_cat_list=None,
             n_layers=n_layers,

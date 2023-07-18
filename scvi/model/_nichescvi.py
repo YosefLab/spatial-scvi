@@ -1,7 +1,7 @@
 import logging
 from typing import List, Literal, Optional, Sequence
 
-import numpy as np
+import numpy as np, pandas as pd
 from anndata import AnnData
 import torch
 import torch.nn.functional as F
@@ -107,8 +107,8 @@ class nicheSCVI(
         adata: AnnData,
         # n_cell_types: int,
         ###########
-        k_nn: int,  # TODO access th obsm keys to infer these parameters from the data!
-        n_latent_z1: int,
+        # k_nn: int,  # TODO access th obsm keys to infer these parameters from the data!
+        # n_latent_z1: int,
         ###########
         niche_kl_weight: float = 1.0,
         n_hidden: int = 128,
@@ -139,12 +139,16 @@ class nicheSCVI(
                 self.adata_manager, n_batch
             )
 
+        self.k_nn = self.summary_stats.n_niche_indexes
+        self.n_latent_mean = self.summary_stats.n_latent_mean
+        self.n_cell_types = self.summary_stats.n_niche_composition
+
         self.module = self._module_cls(
             n_input=self.summary_stats.n_vars,
-            # n_cell_types=n_cell_types,
             ###########
-            k_nn=k_nn,  # TODO access th obsm keys to infer these parameters from the data!
-            n_latent_z1=n_latent_z1,
+            n_cell_types=self.n_cell_types,
+            k_nn=self.k_nn,
+            n_latent_z1=self.n_latent_mean,
             ###########
             niche_kl_weight=niche_kl_weight,
             n_batch=n_batch,
@@ -287,6 +291,8 @@ class nicheSCVI(
         """
 
         adata.obsm[niche_indexes_key] = np.zeros((adata.n_obs, k_nn))
+        n_cell_types = len(adata.obs[labels_key].unique())
+        adata.obsm[niche_composition_key] = np.zeros((adata.n_obs, n_cell_types))
         adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
 
         setup_method_args = cls._get_setup_method_args(**locals())
@@ -322,38 +328,19 @@ class nicheSCVI(
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
 
-        def get_niche_indexes(
-            adata,
-            sample_key,
-            niche_indexes_key,
-            cell_coordinates_key,
-            k_nn,
-        ):
-            for sample in adata.obs[sample_key].unique():
-                sample_coord = adata.obsm[cell_coordinates_key][
-                    adata.obs[sample_key] == sample
-                ]
-
-                # Create a NearestNeighbors object
-                knn = NearestNeighbors(n_neighbors=k_nn + 1)
-
-                # Fit the kNN model to the points
-                knn.fit(sample_coord)
-
-                # Find the indices of the kNN for each point
-                _, indices = knn.kneighbors(sample_coord)
-
-                adata.obsm[niche_indexes_key][
-                    adata.obs[sample_key] == sample
-                ] = indices[:, 1:]
-            return None
-
         get_niche_indexes(
             adata=adata,
             sample_key=sample_key,
             niche_indexes_key=niche_indexes_key,
             cell_coordinates_key=cell_coordinates_key,
             k_nn=k_nn,
+        )
+
+        get_neighborhood_composition(
+            adata=adata,
+            cell_type_column=labels_key,
+            indices_key=niche_indexes_key,
+            niche_composition_key=niche_composition_key,
         )
 
     @staticmethod
@@ -438,3 +425,99 @@ class nicheSCVI(
             minified_adata, minified_data_type
         )
         self.module.minified_data_type = minified_data_type
+
+
+def get_niche_indexes(
+    adata,
+    sample_key,
+    niche_indexes_key,
+    cell_coordinates_key,
+    k_nn,
+):
+    adata.obs["index"] = np.arange(adata.shape[0])
+    # build a dictionnary giving the index of each 'donor_slice' observation:
+    donor_slice_index = {}
+    for sample in adata.obs[sample_key].unique():
+        donor_slice_index[sample] = adata.obs[adata.obs[sample_key] == sample][
+            "index"
+        ].values
+
+    for sample in adata.obs[sample_key].unique():
+        sample_coord = adata.obsm[cell_coordinates_key][adata.obs[sample_key] == sample]
+
+        # Create a NearestNeighbors object
+        knn = NearestNeighbors(n_neighbors=k_nn + 1)
+
+        # Fit the kNN model to the points
+        knn.fit(sample_coord)
+
+        # Find the indices of the kNN for each point
+        _, indices = knn.kneighbors(sample_coord)
+
+        # Store the indices in the adata object
+        sample_global_index = donor_slice_index[sample][indices].astype(int)
+
+        adata.obsm[niche_indexes_key][
+            adata.obs[sample_key] == sample
+        ] = sample_global_index[:, 1:]
+
+        adata.obsm[niche_indexes_key] = adata.obsm[niche_indexes_key].astype(int)
+
+    return None
+
+
+def get_neighborhood_composition(
+    adata: AnnData,
+    cell_type_column: str,
+    indices_key: str = "niche_indexes",
+    niche_composition_key: str = "niche_composition",
+):
+    indices = adata.obsm[indices_key].astype(int)
+
+    cell_types = adata.obs[cell_type_column].unique().tolist()
+    cell_type_to_int = {cell_types[i]: i for i in range(len(cell_types))}
+
+    # Transform the query vector into an integer-valued vector
+    integer_vector = np.vectorize(cell_type_to_int.get)(adata.obs[cell_type_column])
+
+    n_cells = adata.n_obs
+    # For each cell, get the cell types of its neighbors
+    cell_types_in_the_neighborhood = [
+        integer_vector[indices[cell, :]] for cell in range(n_cells)
+    ]
+
+    # Compute the composition of each neighborhood
+    composition = np.array(
+        [
+            np.bincount(
+                cell_types_in_the_neighborhood[cell],
+                minlength=len(cell_type_to_int),
+            )
+            for cell in range(n_cells)
+        ]
+    )
+
+    composition = composition / indices.shape[1]
+    composition = np.array(composition)
+
+    neighborhood_composition_df = pd.DataFrame(
+        data=composition,
+        columns=cell_types,
+        index=adata.obs_names,
+    )
+
+    adata.obsm[niche_composition_key] = neighborhood_composition_df
+
+    return None
+
+
+def get_average_latent_per_celltype(
+    adata: AnnData,
+    labels_key: str,
+    niche_indexes_key: str,
+    latent_mean_key: str,
+    latent_var_key: str,
+):
+    # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
+
+    return None
