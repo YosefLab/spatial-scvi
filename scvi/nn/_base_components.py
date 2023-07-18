@@ -597,8 +597,8 @@ class NicheDecoder(nn.Module):
             **kwargs,
         )
 
-        self.mean_decoder = nn.Linear(n_hidden, n_output * k_nn)
-        self.var_decoder = nn.Linear(n_hidden, n_output * k_nn)
+        self.mean_decoder = nn.Linear(n_hidden, n_output * n_niche_components)
+        self.var_decoder = nn.Linear(n_hidden, n_output * n_niche_components)
 
     def forward(self, x: torch.Tensor, *cat_list: int):
         """The forward computation for a single sample.
@@ -622,7 +622,7 @@ class NicheDecoder(nn.Module):
         # Parameters for latent distribution
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
-        p_v = torch.nn.Softplus()(self.var_decoder(p))  # change exp to softplus
+        p_v = torch.nn.Softplus()(self.var_decoder(p))  # changed exp to softplus
         return p_m, p_v
 
 

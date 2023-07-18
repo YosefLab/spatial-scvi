@@ -515,7 +515,35 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
 
         niche_mean = generative_outputs["niche_mean"]
-        niche_variance = generative_outputs["niche_variance"]
+        niche_var = generative_outputs["niche_variance"]
+
+        niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
+
+        # print(
+        #     "niche_mean: ",
+        #     niche_mean.shape,
+        #     "z1_mean",
+        #     z1_mean.shape,
+        #     "cell_indexes: ",
+        #     cell_indexes.shape,
+        #     "niche_indexes: ",
+        #     niche_indexes.shape,
+        # )
+
+        niche_mean_mat = niche_mean.reshape(
+            niche_mean.shape[0], self.n_niche_components, self.n_latent_z1
+        )
+        niche_var_mat = niche_var.reshape(
+            niche_var.shape[0], self.n_niche_components, self.n_latent_z1
+        )
+
+        niche_mean_mat = niche_composition.unsqueeze(-1) * niche_mean_mat
+        niche_var_mat = torch.square(niche_composition.unsqueeze(-1)) * niche_var_mat
+
+        niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
+        niche_var_agg = torch.sum(niche_var_mat, dim=1)
+
+        niche_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
 
         kl_divergence_niche = 0
 
