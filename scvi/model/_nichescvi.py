@@ -267,6 +267,7 @@ class nicheSCVI(
         size_factor_key: Optional[str] = None,
         niche_composition_key: Optional[str] = None,
         niche_indexes_key: Optional[str] = None,
+        niche_distances_key: Optional[str] = None,
         sample_key: Optional[str] = None,
         cell_coordinates_key: Optional[str] = None,
         k_nn: int = 10,
@@ -291,6 +292,7 @@ class nicheSCVI(
         """
 
         adata.obsm[niche_indexes_key] = np.zeros((adata.n_obs, k_nn))
+        adata.obsm[niche_distances_key] = np.zeros((adata.n_obs, k_nn))
         n_cell_types = len(adata.obs[labels_key].unique())
         adata.obsm[niche_composition_key] = np.zeros((adata.n_obs, n_cell_types))
         adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
@@ -310,6 +312,7 @@ class nicheSCVI(
                 REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys
             ),
             ObsmField(REGISTRY_KEYS.NICHE_COMPOSITION_KEY, niche_composition_key),
+            ObsmField(REGISTRY_KEYS.NICHE_DISTANCES_KEY, niche_distances_key),
             ObsmField(REGISTRY_KEYS.Z1_mean_KEY, latent_mean_key),
             ObsmField(REGISTRY_KEYS.Z1_var_KEY, latent_var_key),
             ObsmField(REGISTRY_KEYS.NICHE_INDEXES_KEY, niche_indexes_key),
@@ -332,6 +335,7 @@ class nicheSCVI(
             adata=adata,
             sample_key=sample_key,
             niche_indexes_key=niche_indexes_key,
+            niche_distances_key=niche_distances_key,
             cell_coordinates_key=cell_coordinates_key,
             k_nn=k_nn,
         )
@@ -428,11 +432,12 @@ class nicheSCVI(
 
 
 def get_niche_indexes(
-    adata,
-    sample_key,
-    niche_indexes_key,
-    cell_coordinates_key,
-    k_nn,
+    adata: AnnData,
+    sample_key: str,
+    niche_indexes_key: str,
+    niche_distances_key: Optional[str],
+    cell_coordinates_key: str,
+    k_nn: int,
 ):
     adata.obs["index"] = np.arange(adata.shape[0])
     # build a dictionnary giving the index of each 'donor_slice' observation:
@@ -452,7 +457,11 @@ def get_niche_indexes(
         knn.fit(sample_coord)
 
         # Find the indices of the kNN for each point
-        _, indices = knn.kneighbors(sample_coord)
+        distances, indices = knn.kneighbors(sample_coord)
+
+        # apply an inverse exp transformation to the distances
+        # distances = np.exp(-(distances**2))
+        distances[:, 1:] = 1 / distances[:, 1:]
 
         # Store the indices in the adata object
         sample_global_index = donor_slice_index[sample][indices].astype(int)
@@ -462,6 +471,10 @@ def get_niche_indexes(
         ] = sample_global_index[:, 1:]
 
         adata.obsm[niche_indexes_key] = adata.obsm[niche_indexes_key].astype(int)
+
+        adata.obsm[niche_distances_key][adata.obs[sample_key] == sample] = distances[
+            :, 1:
+        ]
 
     return None
 

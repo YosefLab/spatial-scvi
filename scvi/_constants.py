@@ -17,7 +17,9 @@ class _REGISTRY_KEYS_NT(NamedTuple):
     NICHE_COMPOSITION_KEY: str = "niche_composition"
     Z1_mean_KEY: str = "latent_mean"
     Z1_var_KEY: str = "latent_var"
-    NICHE_INDEXES_KEY: str  = "niche_indexes"
+    NICHE_INDEXES_KEY: str = "niche_indexes"
+    NICHE_DISTANCES_KEY: str = "niche_distances"
+
 
 class _METRIC_KEYS_NT(NamedTuple):
     TRAINING_KEY: str = "training"
