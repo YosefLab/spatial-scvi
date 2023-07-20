@@ -347,6 +347,16 @@ class nicheSCVI(
             niche_composition_key=niche_composition_key,
         )
 
+        get_average_latent_per_celltype(
+            adata=adata,
+            labels_key=labels_key,
+            niche_indexes_key=niche_indexes_key,
+            latent_mean_key=latent_mean_key,
+            latent_var_key=latent_var_key,
+            latent_mean_ct_key="qz1_m_niches",
+            latent_var_ct_key="qz1_var_niches",
+        )
+
     @staticmethod
     def _get_fields_for_adata_minification(
         minified_data_type: MinifiedDataType,
@@ -530,7 +540,61 @@ def get_average_latent_per_celltype(
     niche_indexes_key: str,
     latent_mean_key: str,
     latent_var_key: str,
+    latent_mean_ct_key: str = "qz1_m_niches",
+    latent_var_ct_key: str = "qz1_var_niches",
+    epsilon: float = 1e-6,
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
+
+    n_cells = adata.n_obs
+    n_latent_z1 = adata.obsm[latent_mean_key].shape[1]
+    niche_indexes = adata.obsm[niche_indexes_key]
+
+    z1_mean_niches = adata.obsm[latent_mean_key][niche_indexes]
+    z1_var_niches = adata.obsm[latent_var_key][niche_indexes]
+
+    cell_types = adata.obs[labels_key].unique().tolist()
+
+    cell_type_to_int = {cell_types[i]: i for i in range(len(cell_types))}
+    integer_vector = np.vectorize(cell_type_to_int.get)(adata.obs[labels_key])
+
+    # For each cell, get the cell types of its neighbors
+    cell_types_in_the_neighborhood = np.vstack(
+        [integer_vector[niche_indexes[cell, :]] for cell in range(n_cells)]
+    )
+
+    dict_of_cell_type_indices = {}
+
+    for cell_type, cell_type_idx in cell_type_to_int.items():
+        ct_row_indices, ct_col_indices = np.where(
+            cell_types_in_the_neighborhood == cell_type_idx
+        )  # [1]
+
+        # print(cell_type_idx)
+        result_dict = {}
+        for row_idx, col_idx in zip(ct_row_indices, ct_col_indices):
+            result_dict.setdefault(row_idx, []).append(col_idx)
+
+        dict_of_cell_type_indices[cell_type] = result_dict
+
+    # print(dict_of_cell_type_indices)
+
+    z1_mean_niches_ct = (
+        np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+    )  # batch times n_cell_types times n_latent
+    z1_var_niches_ct = np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+
+    for cell_type, cell_type_idx in cell_type_to_int.items():
+        ct_dict = dict_of_cell_type_indices[cell_type]
+        for cell_idx, neighbor_idxs in ct_dict.items():
+            z1_mean_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
+                z1_mean_niches[cell_idx, neighbor_idxs, :], axis=0
+            )
+            z1_var_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
+                z1_var_niches[cell_idx, neighbor_idxs, :], axis=0
+            )
+
+    adata.obsm[latent_mean_ct_key] = z1_mean_niches_ct
+    adata.obsm[latent_var_ct_key] = z1_var_niches_ct
 
     return None

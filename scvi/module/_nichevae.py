@@ -109,7 +109,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         n_latent_z1: int,
         n_cell_types: Optional[int],
         k_nn: Optional[int],
-        niche_components: Literal["cell_type", "knn"],
+        niche_components: Literal["cell_type", "knn", "knn_unweighted"],
+        z1_mean: Optional[torch.Tensor] = None,
+        z1_var: Optional[torch.Tensor] = None,
         ###########
         niche_kl_weight: float = 1.0,
         n_batch: int = 0,
@@ -141,6 +143,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         super().__init__()
 
         self.niche_kl_weight = niche_kl_weight
+        self.z1_mean = torch.tensor(z1_mean)
+        self.z1_var = torch.tensor(z1_var)
+        self.niche_components = niche_components
         # self.niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
         # self.niche_size = self.niche_indexes.shape[1]
 
