@@ -513,27 +513,52 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        z1_mean = tensors[REGISTRY_KEYS.Z1_mean_KEY]
-        z1_var = tensors[REGISTRY_KEYS.Z1_var_KEY]
+        z1_mean = self.z1_mean.to(x.device)  # TODO remove this dirty coding
+        z1_var = self.z1_var.to(x.device)
 
-        cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY]
+        cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
         niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
+        # change niche_indexes type to be int:
+        niche_indexes = niche_indexes.type(torch.int64)
+
+        niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY].unsqueeze(-1)
+        niche_weights_distances = tensors[REGISTRY_KEYS.NICHE_DISTANCES_KEY].unsqueeze(
+            -1
+        )
+
+        if self.niche_components == "cell_type":
+            niche_weights = niche_weights_ct
+            z1_mean_niche = z1_mean[cell_indexes]
+            z1_var_niche = z1_var[cell_indexes]
+        elif self.niche_components == "knn":
+            niche_weights = niche_weights_distances
+            z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
+            z1_var_niche = z1_var[niche_indexes][cell_indexes]
+        elif self.niche_components == "knn_unweighted":
+            niche_weights = torch.ones_like(niche_weights_distances)
+            z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
+            z1_var_niche = z1_var[niche_indexes][cell_indexes]
+
+        elif self.niche_components == "ct_unweighted":
+            niche_weights = torch.ones_like(niche_weights_ct)
+            z1_mean_niche = z1_mean[cell_indexes]
+            z1_var_niche = z1_var[cell_indexes]
+
+        z1_mean_niche = niche_weights * z1_mean_niche
+        z1_var_niche = torch.square(niche_weights) * z1_var_niche
+
+        # print("cell indexes", cell_indexes.shape)
+        # print("Z1 mean niche", z1_mean_niche.shape)
+
+        z1_mean_niche_agg = torch.sum(z1_mean_niche, dim=1)
+        z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
+
+        # print("Z1 mean agg niche observed", z1_mean_niche_agg.shape)
+
+        niche_observed_distribution = Normal(z1_mean_niche_agg, z1_var_niche_agg.sqrt())
 
         niche_mean = generative_outputs["niche_mean"]
         niche_var = generative_outputs["niche_variance"]
-
-        niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
-
-        # print(
-        #     "niche_mean: ",
-        #     niche_mean.shape,
-        #     "z1_mean",
-        #     z1_mean.shape,
-        #     "cell_indexes: ",
-        #     cell_indexes.shape,
-        #     "niche_indexes: ",
-        #     niche_indexes.shape,
-        # )
 
         niche_mean_mat = niche_mean.reshape(
             niche_mean.shape[0], self.n_niche_components, self.n_latent_z1
@@ -542,15 +567,19 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             niche_var.shape[0], self.n_niche_components, self.n_latent_z1
         )
 
-        niche_mean_mat = niche_composition.unsqueeze(-1) * niche_mean_mat
-        niche_var_mat = torch.square(niche_composition.unsqueeze(-1)) * niche_var_mat
+        niche_mean_mat = niche_weights * niche_mean_mat
+        niche_var_mat = torch.square(niche_weights) * niche_var_mat
 
         niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
         niche_var_agg = torch.sum(niche_var_mat, dim=1)
 
-        niche_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
+        # print("Niche mean agg posterior", niche_mean_agg.shape)
 
-        kl_divergence_niche = 0
+        niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
+
+        kl_divergence_niche = kl(
+            niche_posterior_distribution, niche_observed_distribution
+        ).sum(dim=-1)
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
@@ -565,19 +594,14 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         reconst_loss = -generative_outputs["px"].log_prob(x).sum(-1)
 
-        kl_local_for_warmup = kl_divergence_z
-        kl_local_no_warmup = kl_divergence_l
+        kl_local_for_warmup = kl_divergence_z  # TODO discard?
+        kl_local_no_warmup = (
+            kl_divergence_l + self.niche_kl_weight * kl_divergence_niche
+        )
 
         weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup
 
-        loss = (
-            torch.mean(reconst_loss + weighted_kl_local)
-            + self.niche_kl_weight * kl_divergence_niche
-        )
-        # loss = ct_classif_loss
-
-        # print('CE: ', ct_classif_loss)
-        # print(loss.shape, ct_classif_loss.shape, kl_divergence_l.shape, kl_divergence_z.shape, reconst_loss.shape)
+        loss = torch.mean(reconst_loss + weighted_kl_local)
 
         kl_local = {
             "kl_divergence_l": kl_divergence_l,
@@ -587,7 +611,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             loss=loss,
             reconstruction_loss=reconst_loss,
             kl_local=kl_local,
-            extra_metrics={"niche_kl": kl_divergence_niche},
+            extra_metrics={"niche_kl": torch.mean(kl_divergence_niche)},
         )
 
     @torch.inference_mode()
