@@ -109,11 +109,13 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         n_latent_z1: int,
         n_cell_types: Optional[int],
         k_nn: Optional[int],
-        niche_components: Literal["cell_type", "knn", "knn_unweighted"],
+        niche_components: Literal[
+            "cell_type", "knn", "knn_unweighted", "ct_unweighted"
+        ],
         z1_mean: Optional[torch.Tensor] = None,
         z1_var: Optional[torch.Tensor] = None,
-        ###########
         niche_kl_weight: float = 1.0,
+        ###########
         n_batch: int = 0,
         n_labels: int = 0,
         n_hidden: Tunable[int] = 128,
@@ -517,6 +519,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         z1_var = self.z1_var.to(x.device)
 
         cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
+        # equivalent:
+        # cell_indexes = tensors['ind_x].squeeze()
+
         niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
         # change niche_indexes type to be int:
         niche_indexes = niche_indexes.type(torch.int64)
@@ -526,6 +531,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             -1
         )
 
+        # Niche observed distribution-----------------------------------------------------------
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
             z1_mean_niche = z1_mean[cell_indexes]
@@ -538,7 +544,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             niche_weights = torch.ones_like(niche_weights_distances)
             z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
             z1_var_niche = z1_var[niche_indexes][cell_indexes]
-
         elif self.niche_components == "ct_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
             z1_mean_niche = z1_mean[cell_indexes]
@@ -547,16 +552,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         z1_mean_niche = niche_weights * z1_mean_niche
         z1_var_niche = torch.square(niche_weights) * z1_var_niche
 
-        # print("cell indexes", cell_indexes.shape)
-        # print("Z1 mean niche", z1_mean_niche.shape)
-
         z1_mean_niche_agg = torch.sum(z1_mean_niche, dim=1)
         z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
 
-        # print("Z1 mean agg niche observed", z1_mean_niche_agg.shape)
-
         niche_observed_distribution = Normal(z1_mean_niche_agg, z1_var_niche_agg.sqrt())
 
+        # Posterior distribution-----------------------------------------------------------
         niche_mean = generative_outputs["niche_mean"]
         niche_var = generative_outputs["niche_variance"]
 
@@ -573,8 +574,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
         niche_var_agg = torch.sum(niche_var_mat, dim=1)
 
-        # print("Niche mean agg posterior", niche_mean_agg.shape)
-
         niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
 
         kl_divergence_niche = kl(
@@ -584,6 +583,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
         )
+        
         if not self.use_observed_lib_size:
             kl_divergence_l = kl(
                 inference_outputs["ql"],

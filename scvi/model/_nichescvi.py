@@ -273,6 +273,8 @@ class nicheSCVI(
         k_nn: int = 10,
         latent_mean_key: Optional[str] = None,
         latent_var_key: Optional[str] = None,
+        latent_mean_ct_key: Optional[str] = None,
+        latent_var_ct_key: Optional[str] = None,
         categorical_covariate_keys: Optional[List[str]] = None,
         continuous_covariate_keys: Optional[List[str]] = None,
         cell_index_key="cell_index",
@@ -347,15 +349,16 @@ class nicheSCVI(
             niche_composition_key=niche_composition_key,
         )
 
-        get_average_latent_per_celltype(
-            adata=adata,
-            labels_key=labels_key,
-            niche_indexes_key=niche_indexes_key,
-            latent_mean_key=latent_mean_key,
-            latent_var_key=latent_var_key,
-            latent_mean_ct_key="qz1_m_niches",
-            latent_var_ct_key="qz1_var_niches",
-        )
+        if latent_mean_ct_key is not None:
+            get_average_latent_per_celltype(
+                adata=adata,
+                labels_key=labels_key,
+                niche_indexes_key=niche_indexes_key,
+                latent_mean_key=latent_mean_key,
+                latent_var_key=latent_var_key,
+                latent_mean_ct_key=latent_mean_ct_key,
+                latent_var_ct_key=latent_var_ct_key,
+            )
 
     @staticmethod
     def _get_fields_for_adata_minification(
@@ -470,7 +473,7 @@ def get_niche_indexes(
         distances, indices = knn.kneighbors(sample_coord)
 
         # apply an inverse exp transformation to the distances
-        # distances = np.exp(-(distances**2))
+        # distances = np.exp(-(distances**2)) - or inverse of the distance
         distances[:, 1:] = 1 / distances[:, 1:]
 
         # Store the indices in the adata object
@@ -542,7 +545,7 @@ def get_average_latent_per_celltype(
     latent_var_key: str,
     latent_mean_ct_key: str = "qz1_m_niches",
     latent_var_ct_key: str = "qz1_var_niches",
-    epsilon: float = 1e-6,
+    epsilon: float = 0,
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
 
