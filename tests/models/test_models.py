@@ -36,6 +36,8 @@ from scvi.model import (
     DestVI,
     JaxSCVI,
     LinearSCVI,
+    nicheSCVI,
+    compoSCVI,
 )
 from scvi.model.utils import mde
 from scvi.train import TrainingPlan, TrainRunner
