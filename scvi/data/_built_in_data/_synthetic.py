@@ -29,6 +29,7 @@ def _generate_synthetic(
     protein_expression_key: str = "protein_expression",
     protein_names_key: str = "protein_names",
     accessibility_key: str = "accessibility",
+    coordinates_key: str = "coordinates",
 ) -> AnnOrMuData:
     n_obs = batch_size * n_batches
 
@@ -41,7 +42,6 @@ def _generate_synthetic(
     mask = np.random.binomial(n=1, p=dropout_ratio, size=(n_obs, n_genes))
     rna = rna * mask
     rna = sparsify_data(rna)
-
     if n_proteins > 0:
         protein = np.random.negative_binomial(5, 0.3, size=(n_obs, n_proteins))
         protein_names = np.arange(n_proteins).astype(str)
@@ -83,5 +83,7 @@ def _generate_synthetic(
     adata.obs[batch_key] = pd.Categorical(batch)
     if n_labels > 0:
         adata.obs[labels_key] = pd.Categorical(labels)
+
+    adata.obsm[coordinates_key] = np.random.normal(size=(n_obs, 2))
 
     return adata

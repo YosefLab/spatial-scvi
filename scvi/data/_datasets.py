@@ -491,15 +491,16 @@ def cortex(save_path: str = "data/") -> anndata.AnnData:
 def synthetic_iid(
     batch_size: int = 200,
     n_genes: int = 100,
-    n_proteins: int = 100,
-    n_regions: int = 100,
+    n_proteins: int = 0,
+    n_regions: int = 0,
     n_batches: int = 2,
     n_labels: int = 3,
-    dropout_ratio: float = 0.7,
+    dropout_ratio: float = 0.5,
+    coordinates_key: str = "coordinates",
     sparse_format: Optional[str] = None,
     return_mudata: bool = False,
 ) -> AnnOrMuData:
-    """Synthetic multimodal dataset.
+    """Synthetic multimodal dataset, with an .obsm for spatial single-cell coordinates.
 
     RNA and accessibility data are generated from a zero-inflated negative binomial,
     while protein data is generated from a negative binomial distribution. This dataset
@@ -574,6 +575,7 @@ def synthetic_iid(
         n_batches=n_batches,
         n_labels=n_labels,
         dropout_ratio=dropout_ratio,
+        coordinates_key=coordinates_key,
         sparse_format=sparse_format,
         return_mudata=return_mudata,
     )
