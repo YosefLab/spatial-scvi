@@ -15,8 +15,8 @@ class _REGISTRY_KEYS_NT(NamedTuple):
     LATENT_QZV_KEY: str = "latent_qzv"
     OBSERVED_LIB_SIZE: str = "observed_lib_size"
     NICHE_COMPOSITION_KEY: str = "niche_composition"
-    Z1_mean_KEY: str = "latent_mean"
-    Z1_var_KEY: str = "latent_var"
+    Z1_MEAN_KEY: str = "latent_mean"
+    Z1_VAR_KEY: str = "latent_var"
     NICHE_INDEXES_KEY: str = "niche_indexes"
     NICHE_DISTANCES_KEY: str = "niche_distances"
 

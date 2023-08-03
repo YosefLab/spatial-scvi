@@ -169,7 +169,7 @@ class nicheSCVI(
         )
         self.module.minified_data_type = self.minified_data_type
         self._model_summary_string = (
-            "SCVI Model with the following params: \nn_hidden: {}, n_latent: {}, n_layers: {}, dropout_rate: "
+            "nicheVI Model with the following params: \nn_hidden: {}, n_latent: {}, n_layers: {}, dropout_rate: "
             "{}, dispersion: {}, gene_likelihood: {}, latent_distribution: {}"
         ).format(
             n_hidden,
@@ -256,25 +256,82 @@ class nicheSCVI(
 
         return ct_pred
 
-    @classmethod
-    @setup_anndata_dsp.dedent
-    def setup_anndata(
-        cls,
+    def preprocessing_anndata(
         adata: AnnData,
-        layer: Optional[str] = None,
-        batch_key: Optional[str] = None,
-        labels_key: Optional[str] = None,
-        size_factor_key: Optional[str] = None,
         niche_composition_key: Optional[str] = None,
         niche_indexes_key: Optional[str] = None,
         niche_distances_key: Optional[str] = None,
+        labels_key: Optional[str] = None,
         sample_key: Optional[str] = None,
         cell_coordinates_key: Optional[str] = None,
         k_nn: int = 10,
         latent_mean_key: Optional[str] = None,
         latent_var_key: Optional[str] = None,
-        latent_mean_ct_key: Optional[str] = None,
-        latent_var_ct_key: Optional[str] = None,
+        latent_mean_niche_keys: Optional[list] = None,
+        latent_var_niche_keys: Optional[str] = None,
+    ):
+        adata.obsm[niche_indexes_key] = np.zeros(
+            (adata.n_obs, k_nn)
+        )  # for each cell, store the indexes of its k_nn neighbors
+        adata.obsm[niche_distances_key] = np.zeros(
+            (adata.n_obs, k_nn)
+        )  # for each cell, store the distances to its k_nn neighbors
+        n_cell_types = len(adata.obs[labels_key].unique())  # number of cell types
+        adata.obsm[niche_composition_key] = np.zeros(
+            (adata.n_obs, n_cell_types)
+        )  # for each cell, store the composition of its neighborhood as a convex vector of cell type proportions
+        # adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
+
+        get_niche_indexes(
+            adata=adata,
+            sample_key=sample_key,
+            niche_indexes_key=niche_indexes_key,
+            niche_distances_key=niche_distances_key,
+            cell_coordinates_key=cell_coordinates_key,
+            k_nn=k_nn,
+        )
+
+        get_neighborhood_composition(
+            adata=adata,
+            cell_type_column=labels_key,
+            indices_key=niche_indexes_key,
+            niche_composition_key=niche_composition_key,
+        )
+
+        get_average_latent_per_celltype(
+            adata=adata,
+            labels_key=labels_key,
+            niche_indexes_key=niche_indexes_key,
+            latent_mean_key=latent_mean_key,
+            latent_var_key=latent_var_key,
+            latent_mean_ct_keys=latent_mean_niche_keys,
+            latent_var_ct_keys=latent_var_niche_keys,
+        )
+
+        return None
+
+    @classmethod
+    @setup_anndata_dsp.dedent
+    def setup_anndata(
+        cls,
+        adata: AnnData,
+        # --specific to nicheVI
+        niche_composition_key: str,
+        niche_indexes_key: str,
+        niche_distances_key: str,
+        # ---------------------
+        layer: Optional[str] = None,
+        batch_key: Optional[str] = None,
+        labels_key: Optional[str] = None,
+        size_factor_key: Optional[str] = None,
+        # sample_key: Optional[str] = None,
+        # cell_coordinates_key: Optional[str] = None,
+        # k_nn: int = 10,
+        latent_mean_key: Optional[str] = None,
+        latent_var_key: Optional[str] = None,
+        # latent_mean_ct_key: Optional[str] = None,
+        # latent_var_ct_key: Optional[str] = None,
+        # ---------------------
         categorical_covariate_keys: Optional[List[str]] = None,
         continuous_covariate_keys: Optional[List[str]] = None,
         cell_index_key="cell_index",
@@ -293,11 +350,11 @@ class nicheSCVI(
         %(param_cont_cov_keys)s
         """
 
-        adata.obsm[niche_indexes_key] = np.zeros((adata.n_obs, k_nn))
-        adata.obsm[niche_distances_key] = np.zeros((adata.n_obs, k_nn))
-        n_cell_types = len(adata.obs[labels_key].unique())
-        adata.obsm[niche_composition_key] = np.zeros((adata.n_obs, n_cell_types))
-        adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
+        # adata.obsm[niche_indexes_key] = np.zeros((adata.n_obs, k_nn))
+        # adata.obsm[niche_distances_key] = np.zeros((adata.n_obs, k_nn))
+        # n_cell_types = len(adata.obs[labels_key].unique())
+        # adata.obsm[niche_composition_key] = np.zeros((adata.n_obs, n_cell_types))
+        # adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
 
         setup_method_args = cls._get_setup_method_args(**locals())
         anndata_fields = [
@@ -315,9 +372,9 @@ class nicheSCVI(
             ),
             ObsmField(REGISTRY_KEYS.NICHE_COMPOSITION_KEY, niche_composition_key),
             ObsmField(REGISTRY_KEYS.NICHE_DISTANCES_KEY, niche_distances_key),
-            ObsmField(REGISTRY_KEYS.Z1_mean_KEY, latent_mean_key),
-            ObsmField(REGISTRY_KEYS.Z1_var_KEY, latent_var_key),
             ObsmField(REGISTRY_KEYS.NICHE_INDEXES_KEY, niche_indexes_key),
+            ObsmField(REGISTRY_KEYS.Z1_MEAN_KEY, latent_mean_key),
+            ObsmField(REGISTRY_KEYS.Z1_VAR_KEY, latent_var_key),
             NumericalObsField(
                 REGISTRY_KEYS.INDICES_KEY, cell_index_key, required=False
             ),
@@ -543,8 +600,8 @@ def get_average_latent_per_celltype(
     niche_indexes_key: str,
     latent_mean_key: str,
     latent_var_key: str,
-    latent_mean_ct_key: str = "qz1_m_niches",
-    latent_var_ct_key: str = "qz1_var_niches",
+    latent_mean_ct_keys: list[str] = ["qz1_m_niche_ct"],
+    latent_var_ct_keys: list[str] = ["qz1_var_niche_ct"],
     epsilon: float = 0,
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
@@ -556,48 +613,57 @@ def get_average_latent_per_celltype(
     z1_mean_niches = adata.obsm[latent_mean_key][niche_indexes]
     z1_var_niches = adata.obsm[latent_var_key][niche_indexes]
 
-    cell_types = adata.obs[labels_key].unique().tolist()
+    if "qz1_m_niche_knn" in latent_mean_ct_keys:
+        adata.obsm["qz1_m_niche_knn"] = z1_mean_niches
+        adata.obsm["qz1_var_niche_knn"] = z1_var_niches
 
-    cell_type_to_int = {cell_types[i]: i for i in range(len(cell_types))}
-    integer_vector = np.vectorize(cell_type_to_int.get)(adata.obs[labels_key])
+        print("Saved qz1_m_niche_knn and qz1_var_niche_knn in adata.obsm")
 
-    # For each cell, get the cell types of its neighbors
-    cell_types_in_the_neighborhood = np.vstack(
-        [integer_vector[niche_indexes[cell, :]] for cell in range(n_cells)]
-    )
+    if "qz1_m_niche_ct" in latent_mean_ct_keys:
+        cell_types = adata.obs[labels_key].unique().tolist()
 
-    dict_of_cell_type_indices = {}
+        cell_type_to_int = {cell_types[i]: i for i in range(len(cell_types))}
+        integer_vector = np.vectorize(cell_type_to_int.get)(adata.obs[labels_key])
 
-    for cell_type, cell_type_idx in cell_type_to_int.items():
-        ct_row_indices, ct_col_indices = np.where(
-            cell_types_in_the_neighborhood == cell_type_idx
-        )  # [1]
+        # For each cell, get the cell types of its neighbors
+        cell_types_in_the_neighborhood = np.vstack(
+            [integer_vector[niche_indexes[cell, :]] for cell in range(n_cells)]
+        )
 
-        # print(cell_type_idx)
-        result_dict = {}
-        for row_idx, col_idx in zip(ct_row_indices, ct_col_indices):
-            result_dict.setdefault(row_idx, []).append(col_idx)
+        dict_of_cell_type_indices = {}
 
-        dict_of_cell_type_indices[cell_type] = result_dict
+        for cell_type, cell_type_idx in cell_type_to_int.items():
+            ct_row_indices, ct_col_indices = np.where(
+                cell_types_in_the_neighborhood == cell_type_idx
+            )  # [1]
 
-    # print(dict_of_cell_type_indices)
+            # print(cell_type_idx)
+            result_dict = {}
+            for row_idx, col_idx in zip(ct_row_indices, ct_col_indices):
+                result_dict.setdefault(row_idx, []).append(col_idx)
 
-    z1_mean_niches_ct = (
-        np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
-    )  # batch times n_cell_types times n_latent
-    z1_var_niches_ct = np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+            dict_of_cell_type_indices[cell_type] = result_dict
 
-    for cell_type, cell_type_idx in cell_type_to_int.items():
-        ct_dict = dict_of_cell_type_indices[cell_type]
-        for cell_idx, neighbor_idxs in ct_dict.items():
-            z1_mean_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
-                z1_mean_niches[cell_idx, neighbor_idxs, :], axis=0
-            )
-            z1_var_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
-                z1_var_niches[cell_idx, neighbor_idxs, :], axis=0
-            )
+        # print(dict_of_cell_type_indices)
 
-    adata.obsm[latent_mean_ct_key] = z1_mean_niches_ct
-    adata.obsm[latent_var_ct_key] = z1_var_niches_ct
+        z1_mean_niches_ct = (
+            np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+        )  # batch times n_cell_types times n_latent
+        z1_var_niches_ct = np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+
+        for cell_type, cell_type_idx in cell_type_to_int.items():
+            ct_dict = dict_of_cell_type_indices[cell_type]
+            for cell_idx, neighbor_idxs in ct_dict.items():
+                z1_mean_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
+                    z1_mean_niches[cell_idx, neighbor_idxs, :], axis=0
+                )
+                z1_var_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
+                    z1_var_niches[cell_idx, neighbor_idxs, :], axis=0
+                )
+
+        adata.obsm["qz1_m_niche_ct"] = z1_mean_niches_ct
+        adata.obsm["qz1_var_niche_ct"] = z1_var_niches_ct
+
+        print("Saved qz1_m_niche_ct and qz1_var_niche_ct in adata.obsm")
 
     return None

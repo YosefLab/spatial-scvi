@@ -583,7 +583,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
         )
-        
+
         if not self.use_observed_lib_size:
             kl_divergence_l = kl(
                 inference_outputs["ql"],
