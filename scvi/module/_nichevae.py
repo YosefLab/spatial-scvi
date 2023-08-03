@@ -518,9 +518,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         z1_mean = self.z1_mean.to(x.device)  # TODO remove this dirty coding
         z1_var = self.z1_var.to(x.device)
 
-        cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
+        # cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
         # equivalent:
-        # cell_indexes = tensors['ind_x].squeeze()
+        cell_indexes = tensors["ind_x"].type(torch.int64).squeeze()
 
         niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
         # change niche_indexes type to be int:
@@ -534,20 +534,21 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         # Niche observed distribution-----------------------------------------------------------
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
-            z1_mean_niche = z1_mean[cell_indexes]
-            z1_var_niche = z1_var[cell_indexes]
+            # z1_mean_niche = z1_mean[cell_indexes]
+            # z1_var_niche = z1_var[cell_indexes]
         elif self.niche_components == "knn":
             niche_weights = niche_weights_distances
-            z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
-            z1_var_niche = z1_var[niche_indexes][cell_indexes]
+            # z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
+            # z1_var_niche = z1_var[niche_indexes][cell_indexes]
         elif self.niche_components == "knn_unweighted":
             niche_weights = torch.ones_like(niche_weights_distances)
-            z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
-            z1_var_niche = z1_var[niche_indexes][cell_indexes]
+            # z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
+            # z1_var_niche = z1_var[niche_indexes][cell_indexes]
         elif self.niche_components == "ct_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
-            z1_mean_niche = z1_mean[cell_indexes]
-            z1_var_niche = z1_var[cell_indexes]
+
+        z1_mean_niche = z1_mean[cell_indexes]
+        z1_var_niche = z1_var[cell_indexes]
 
         z1_mean_niche = niche_weights * z1_mean_niche
         z1_var_niche = torch.square(niche_weights) * z1_var_niche

@@ -390,32 +390,32 @@ class nicheSCVI(
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
 
-        get_niche_indexes(
-            adata=adata,
-            sample_key=sample_key,
-            niche_indexes_key=niche_indexes_key,
-            niche_distances_key=niche_distances_key,
-            cell_coordinates_key=cell_coordinates_key,
-            k_nn=k_nn,
-        )
+        # get_niche_indexes(
+        #     adata=adata,
+        #     sample_key=sample_key,
+        #     niche_indexes_key=niche_indexes_key,
+        #     niche_distances_key=niche_distances_key,
+        #     cell_coordinates_key=cell_coordinates_key,
+        #     k_nn=k_nn,
+        # )
 
-        get_neighborhood_composition(
-            adata=adata,
-            cell_type_column=labels_key,
-            indices_key=niche_indexes_key,
-            niche_composition_key=niche_composition_key,
-        )
+        # get_neighborhood_composition(
+        #     adata=adata,
+        #     cell_type_column=labels_key,
+        #     indices_key=niche_indexes_key,
+        #     niche_composition_key=niche_composition_key,
+        # )
 
-        if latent_mean_ct_key is not None:
-            get_average_latent_per_celltype(
-                adata=adata,
-                labels_key=labels_key,
-                niche_indexes_key=niche_indexes_key,
-                latent_mean_key=latent_mean_key,
-                latent_var_key=latent_var_key,
-                latent_mean_ct_key=latent_mean_ct_key,
-                latent_var_ct_key=latent_var_ct_key,
-            )
+        # if latent_mean_ct_key is not None:
+        #     get_average_latent_per_celltype(
+        #         adata=adata,
+        #         labels_key=labels_key,
+        #         niche_indexes_key=niche_indexes_key,
+        #         latent_mean_key=latent_mean_key,
+        #         latent_var_key=latent_var_key,
+        #         latent_mean_ct_key=latent_mean_ct_key,
+        #         latent_var_ct_key=latent_var_ct_key,
+        #     )
 
     @staticmethod
     def _get_fields_for_adata_minification(
