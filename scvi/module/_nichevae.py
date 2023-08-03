@@ -515,7 +515,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        z1_mean = self.z1_mean.to(x.device)  # TODO remove this dirty coding
+        z1_mean = self.z1_mean.to(
+            x.device
+        )  # TODO remove this dirty coding. For now, you load the full latent space matrix
         z1_var = self.z1_var.to(x.device)
 
         # cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
@@ -547,8 +549,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         elif self.niche_components == "ct_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
 
-        z1_mean_niche = z1_mean[cell_indexes]
-        z1_var_niche = z1_var[cell_indexes]
+        z1_mean_niche = z1_mean[
+            cell_indexes
+        ]  # subset of z1_mean for the cells in the batch
+        z1_var_niche = z1_var[
+            cell_indexes
+        ]  # subset of z1_var for the cells in the batch
 
         z1_mean_niche = niche_weights * z1_mean_niche
         z1_var_niche = torch.square(niche_weights) * z1_var_niche
@@ -564,10 +570,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         niche_mean_mat = niche_mean.reshape(
             niche_mean.shape[0], self.n_niche_components, self.n_latent_z1
-        )
+        )  # TODO include the reshape in the decoder
         niche_var_mat = niche_var.reshape(
             niche_var.shape[0], self.n_niche_components, self.n_latent_z1
-        )
+        ) # TODO include the reshape in the decoder
 
         niche_mean_mat = niche_weights * niche_mean_mat
         niche_var_mat = torch.square(niche_weights) * niche_var_mat

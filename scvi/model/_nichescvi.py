@@ -354,7 +354,7 @@ class nicheSCVI(
         # adata.obsm[niche_distances_key] = np.zeros((adata.n_obs, k_nn))
         # n_cell_types = len(adata.obs[labels_key].unique())
         # adata.obsm[niche_composition_key] = np.zeros((adata.n_obs, n_cell_types))
-        # adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
+        adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
 
         setup_method_args = cls._get_setup_method_args(**locals())
         anndata_fields = [
@@ -389,33 +389,6 @@ class nicheSCVI(
         )
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
-
-        # get_niche_indexes(
-        #     adata=adata,
-        #     sample_key=sample_key,
-        #     niche_indexes_key=niche_indexes_key,
-        #     niche_distances_key=niche_distances_key,
-        #     cell_coordinates_key=cell_coordinates_key,
-        #     k_nn=k_nn,
-        # )
-
-        # get_neighborhood_composition(
-        #     adata=adata,
-        #     cell_type_column=labels_key,
-        #     indices_key=niche_indexes_key,
-        #     niche_composition_key=niche_composition_key,
-        # )
-
-        # if latent_mean_ct_key is not None:
-        #     get_average_latent_per_celltype(
-        #         adata=adata,
-        #         labels_key=labels_key,
-        #         niche_indexes_key=niche_indexes_key,
-        #         latent_mean_key=latent_mean_key,
-        #         latent_var_key=latent_var_key,
-        #         latent_mean_ct_key=latent_mean_ct_key,
-        #         latent_var_ct_key=latent_var_ct_key,
-        #     )
 
     @staticmethod
     def _get_fields_for_adata_minification(
