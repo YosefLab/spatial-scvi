@@ -92,11 +92,39 @@ LEGACY_SETUP_DICT = {
 
 
 def test_nichevi():
-    adata = synthetic_iid()
+    adata = synthetic_iid(
+        batch_size=200,
+        n_genes=100,
+        n_proteins=0,
+        n_regions=0,
+        n_batches=2,
+        n_labels=3,
+        dropout_ratio=0.5,
+        coordinates_key="coordinates",
+        sparse_format=None,
+        return_mudata=False,
+    )
 
     adata.obsm["qz1_m"] = np.random.normal(size=(adata.shape[0], 10))
     # positive variance:
     adata.obsm["qz1_var"] = np.random.normal(size=(adata.shape[0], 10)) ** 2
+
+    n_latent_z1 = adata.obsm["qz1_var"].shape[1]
+
+    nicheSCVI.preprocessing_anndata(
+        adata,
+        niche_composition_key="neighborhood_composition",
+        niche_indexes_key="niche_indexes",
+        niche_distances_key="niche_distances",
+        labels_key="labels",
+        sample_key="batch",
+        cell_coordinates_key="coordinates",
+        k_nn=20,
+        latent_mean_key="qz1_m",
+        latent_var_key="qz1_var",
+        latent_mean_niche_keys=["qz1_m_niche_ct", "qz1_m_niche_knn"],
+        latent_var_niche_keys=["qz1_var_niche_ct", "qz1_var_niche_knn"],
+    )
 
     nicheSCVI.setup_anndata(
         adata,
@@ -105,24 +133,46 @@ def test_nichevi():
         niche_composition_key="neighborhood_composition",
         niche_indexes_key="niche_indexes",
         niche_distances_key="niche_distances",
-        sample_key="batch",
-        cell_coordinates_key="coordinates",
-        k_nn=10,
         latent_mean_key="qz1_m",
         latent_var_key="qz1_var",
-        latent_mean_ct_key="qz1_m_niches",
-        latent_var_ct_key="qz1_var_niches",
     )
+
+    niche_setup = {
+        "cell_type_setup": {
+            "niche_components": "cell_type",
+            "z1_mean": adata.obsm["qz1_m_niche_ct"],
+            "z1_var": adata.obsm["qz1_var_niche_ct"],
+        },
+        "knn_setup": {
+            "niche_components": "knn",
+            "z1_mean": adata.obsm["qz1_m_niche_knn"],
+            "z1_var": adata.obsm["qz1_var_niche_knn"],
+        },
+        "knn_unweighted_setup": {
+            "niche_components": "knn_unweighted",
+            "z1_mean": adata.obsm["qz1_m_niche_knn"],
+            "z1_var": adata.obsm["qz1_var_niche_knn"],
+        },
+        "cell_type_unweighted_setup": {
+            "niche_components": "cell_type_unweighted",
+            "z1_mean": adata.obsm["qz1_m_niche_ct"],
+            "z1_var": adata.obsm["qz1_var_niche_ct"],
+        },
+    }
+
+    setup_dict = niche_setup["knn_unweighted_setup"]
+    # setup_dict = niche_setup["cell_type_setup"]
+    setup_dict = niche_setup["knn_setup"]
 
     vae = nicheSCVI(
         adata,
-        z1_mean=adata.obsm["qz1_m_niches"],
-        z1_var=adata.obsm["qz1_var_niches"],
+        z1_mean=setup_dict["z1_mean"],
+        z1_var=setup_dict["z1_var"],
         niche_kl_weight=1,
-        # niche_components="knn_unweighted",
-        niche_components="cell_type",
-        n_latent=10,
+        niche_components=setup_dict["niche_components"],
         gene_likelihood="poisson",
+        n_layers=1,
+        n_latent=n_latent_z1,
     )
 
     vae.train(1)
