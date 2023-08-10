@@ -536,52 +536,53 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         # Niche observed distribution-----------------------------------------------------------
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
-            # z1_mean_niche = z1_mean[cell_indexes]
-            # z1_var_niche = z1_var[cell_indexes]
+
         elif self.niche_components == "knn":
             niche_weights = niche_weights_distances
-            # z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
-            # z1_var_niche = z1_var[niche_indexes][cell_indexes]
+
         elif self.niche_components == "knn_unweighted":
             niche_weights = torch.ones_like(niche_weights_distances)
-            # z1_mean_niche = z1_mean[niche_indexes][cell_indexes]
-            # z1_var_niche = z1_var[niche_indexes][cell_indexes]
-        elif self.niche_components == "ct_unweighted":
+
+        elif self.niche_components == "cell_type_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
 
         z1_mean_niche = z1_mean[
             cell_indexes
-        ]  # subset of z1_mean for the cells in the batch
+        ]  # subset of z1_mean to the cells in the batch
         z1_var_niche = z1_var[
             cell_indexes
-        ]  # subset of z1_var for the cells in the batch
+        ]  # subset of z1_var to the cells in the batch
 
         z1_mean_niche = niche_weights * z1_mean_niche
         z1_var_niche = torch.square(niche_weights) * z1_var_niche
 
-        z1_mean_niche_agg = torch.sum(z1_mean_niche, dim=1)
+        # -------------------------------------------------BUILD THE AGGREGATED DISTRIBUTIONS----------------------------------------------
+
+        z1_mean_niche_agg = torch.sum(z1_mean_niche, dim=1)  # shape batch times latent
         z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
 
         niche_observed_distribution = Normal(z1_mean_niche_agg, z1_var_niche_agg.sqrt())
 
-        # Posterior distribution-----------------------------------------------------------
-        niche_mean = generative_outputs["niche_mean"]
-        niche_var = generative_outputs["niche_variance"]
+        # ------------------------------------------------BUILD THE MIXTURE DISTRIBUTION-------------------------------------------------
 
-        niche_mean_mat = niche_mean.reshape(
-            niche_mean.shape[0], self.n_niche_components, self.n_latent_z1
-        )  # TODO include the reshape in the decoder
-        niche_var_mat = niche_var.reshape(
-            niche_var.shape[0], self.n_niche_components, self.n_latent_z1
-        ) # TODO include the reshape in the decoder
+        # niche_mixture_distribution = MixtureSameFamily(niche_latent, niche_weights)
+
+        # Posterior distribution-----------------------------------------------------------
+        niche_mean_mat = generative_outputs["niche_mean"]
+        niche_var_mat = generative_outputs["niche_variance"]
 
         niche_mean_mat = niche_weights * niche_mean_mat
         niche_var_mat = torch.square(niche_weights) * niche_var_mat
 
+        # -----------Niche aggregated posterior distribution---------------------------
         niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
         niche_var_agg = torch.sum(niche_var_mat, dim=1)
 
         niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
+
+        # --------------Niche mixture posterior distribution--------------------------
+
+        # niche_posterior_distribution = MixtureSameFamily(niche_latent, niche_weights)
 
         kl_divergence_niche = kl(
             niche_posterior_distribution, niche_observed_distribution

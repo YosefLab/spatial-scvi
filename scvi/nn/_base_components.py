@@ -587,6 +587,10 @@ class NicheDecoder(nn.Module):
         **kwargs,
     ):
         super().__init__()
+
+        self.n_niche_components = n_niche_components
+        self.n_output = n_output
+
         self.decoder = FCLayers(
             n_in=n_input,
             n_out=n_hidden,
@@ -623,6 +627,11 @@ class NicheDecoder(nn.Module):
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
         p_v = torch.nn.Softplus()(self.var_decoder(p))  # changed exp to softplus
+
+        p_m = p_m.reshape(p_m.shape[0], self.n_niche_components, self.n_output)
+
+        p_v = p_v.reshape(p_v.shape[0], self.n_niche_components, self.n_output)
+
         return p_m, p_v
 
 
