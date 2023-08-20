@@ -269,6 +269,8 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         latent_mean_niche_keys: Optional[list] = None,
         latent_var_niche_keys: Optional[str] = None,
+        latent_mean_ct_prior: Optional[str] = None,
+        latent_var_ct_prior: Optional[str] = None,
     ):
         adata.obsm[niche_indexes_key] = np.zeros(
             (adata.n_obs, k_nn)
@@ -307,6 +309,15 @@ class nicheSCVI(
             latent_mean_ct_keys=latent_mean_niche_keys,
             latent_var_ct_keys=latent_var_niche_keys,
         )
+
+        # get_cell_type_priors(
+        #     adata=adata,
+        #     labels_key=label_key,
+        #     latent_mean_key=latent_mean_key,
+        #     latent_var_key=latent_var_key,
+        #     latent_mean_ct_prior=latent_mean_ct_prior,
+        #     latent_var_ct_prior=latent_var_ct_prior,
+        # )
 
         return None
 
@@ -600,7 +611,7 @@ def get_average_latent_per_celltype(
         cell_type_to_int = {cell_types[i]: i for i in range(len(cell_types))}
         integer_vector = np.vectorize(cell_type_to_int.get)(adata.obs[labels_key])
 
-        # For each cell, get the cell types of its neighbors
+        # For each cell, get the cell types of its neighbors (as integers)
         cell_types_in_the_neighborhood = np.vstack(
             [integer_vector[niche_indexes[cell, :]] for cell in range(n_cells)]
         )
@@ -612,7 +623,7 @@ def get_average_latent_per_celltype(
                 cell_types_in_the_neighborhood == cell_type_idx
             )  # [1]
 
-            # print(cell_type_idx)
+            # dict of cells:local index of the cells of cell_type in the neighborhood.
             result_dict = {}
             for row_idx, col_idx in zip(ct_row_indices, ct_col_indices):
                 result_dict.setdefault(row_idx, []).append(col_idx)
@@ -621,13 +632,24 @@ def get_average_latent_per_celltype(
 
         # print(dict_of_cell_type_indices)
 
-        z1_mean_niches_ct = (
-            np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
-        )  # batch times n_cell_types times n_latent
-        z1_var_niches_ct = np.zeros((n_cells, len(cell_types), n_latent_z1)) + epsilon
+        latent_mean_ct_prior, latent_var_ct_prior = get_cell_type_priors(
+            adata=adata,
+            labels_key=labels_key,
+            latent_mean_key=latent_mean_key,
+            latent_var_key=latent_var_key,
+            # latent_mean_ct_prior=latent_mean_ct_prior,
+            # latent_var_ct_prior=latent_var_ct_prior,
+        )
 
+        z1_mean_niches_ct = np.stack(
+            [latent_mean_ct_prior] * n_cells, axis=0
+        )  # batch times n_cell_types times n_latent. Initialize your prior with a non-spatial average.
+        z1_var_niches_ct = np.stack([latent_var_ct_prior] * n_cells, axis=0)
+
+        # outer loop over cell types
         for cell_type, cell_type_idx in cell_type_to_int.items():
             ct_dict = dict_of_cell_type_indices[cell_type]
+            # inner loop over every cell that has this cell type in its neighborhood.
             for cell_idx, neighbor_idxs in ct_dict.items():
                 z1_mean_niches_ct[cell_idx, cell_type_idx, :] = np.mean(
                     z1_mean_niches[cell_idx, neighbor_idxs, :], axis=0
@@ -642,3 +664,74 @@ def get_average_latent_per_celltype(
         print("Saved qz1_m_niche_ct and qz1_var_niche_ct in adata.obsm")
 
     return None
+
+
+# def get_cell_type_priors(
+#     adata: AnnData,
+#     labels_key: str,
+#     latent_mean_key: str,
+#     latent_var_key: str,
+#     latent_mean_ct_prior: str,
+#     latent_var_ct_prior: str,
+# ):
+#     for latent_key, latent_prior_key in zip(
+#         [latent_mean_key, latent_var_key], [latent_mean_ct_prior, latent_var_ct_prior]
+#     ):
+#         obsm_df = pd.DataFrame(adata.obsm[latent_key])
+
+#         # Add the categorical column from adata.obs to the DataFrame
+#         obsm_df["category"] = adata.obs[labels_key].values
+
+#         # Group by the categorical column and calculate the mean for each group
+#         averages_by_category = obsm_df.groupby("category").mean()
+
+#         averages_by_category = obsm_df.groupby("category").mean()
+
+#         averages_by_category_dict = averages_by_category.T.to_dict(orient="list")
+
+#         # Initialize the adata.obsm['cell_type_priors'] array
+#         # n_latent_z1 = obsm_df.shape[1]  # Assuming 'A' has the same dimensionality
+#         # adata.obsm[latent_mean_ct_prior] = np.zeros((adata.n_obs, n_latent_z1))
+
+#         # Assign the averages using advanced indexing
+#         adata.obsm[latent_prior_key] = np.array(
+#             [averages_by_category_dict[category] for category in adata.obs[labels_key]]
+#         )
+
+#         print(f"Saved {latent_prior_key} in adata.obsm")
+
+#     return None
+
+
+def get_cell_type_priors(
+    adata: AnnData,
+    labels_key: str,
+    latent_mean_key: str,
+    latent_var_key: str,
+    # latent_mean_ct_prior: str,
+    # latent_var_ct_prior: str,
+):
+    cell_types = adata.obs[labels_key].unique().tolist()
+    n_cell_types = len(cell_types)
+
+    int_to_cell_types = {i: cell_types[i] for i in range(n_cell_types)}
+    n_latent_z1 = adata.obsm[latent_mean_key].shape[1]
+
+    latent_mean_priors = np.empty((n_cell_types, n_latent_z1))
+    latent_var_priors = np.empty((n_cell_types, n_latent_z1))
+
+    for i in range(n_cell_types):
+        type = int_to_cell_types[i]
+        latent_mean_priors[i] = np.mean(
+            adata[adata.obs[labels_key] == type].obsm[latent_mean_key], axis=0
+        )
+        latent_var_priors[i] = np.mean(
+            adata[adata.obs[labels_key] == type].obsm[latent_var_key], axis=0
+        )
+
+    # adata.uns[latent_mean_ct_prior] = latent_mean_priors
+    # adata.uns[latent_var_ct_prior] = latent_var_priors
+
+    # print(f"Saved {latent_mean_ct_prior} and {latent_var_ct_prior} in adata.uns")
+
+    return latent_mean_priors, latent_var_priors
