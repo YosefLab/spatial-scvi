@@ -145,9 +145,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         super().__init__()
 
         self.niche_kl_weight = niche_kl_weight
-        self.z1_mean = torch.tensor(z1_mean)
-        self.z1_var = torch.tensor(z1_var)
+        # self.z1_mean = torch.tensor(z1_mean)
+        # self.z1_var = torch.tensor(z1_var)
         self.niche_components = niche_components
+        self.niche_combination = niche_combination
         # self.niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
         # self.niche_size = self.niche_indexes.shape[1]
 
@@ -515,25 +516,24 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        z1_mean = self.z1_mean.to(
-            x.device
-        )  # TODO remove this dirty coding. For now, you load the full latent space matrix
-        z1_var = self.z1_var.to(x.device)
+        # z1_mean = self.z1_mean.to(
+        #     x.device
+        # )  # TODO remove this dirty coding. For now, you load the full latent space matrix
+        # z1_var = self.z1_var.to(x.device)
 
         # cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
-        # equivalent:
-        cell_indexes = tensors["ind_x"].type(torch.int64).squeeze()
 
-        niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
-        # change niche_indexes type to be int:
-        niche_indexes = niche_indexes.type(torch.int64)
+        # niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
+        # # change niche_indexes type to be int:
+        # niche_indexes = niche_indexes.type(torch.int64)
 
         niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY].unsqueeze(-1)
         niche_weights_distances = tensors[REGISTRY_KEYS.NICHE_DISTANCES_KEY].unsqueeze(
             -1
         )
 
-        # Niche observed distribution-----------------------------------------------------------
+        n_cell_types = niche_weights_ct.size(dim=-1)
+
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
 

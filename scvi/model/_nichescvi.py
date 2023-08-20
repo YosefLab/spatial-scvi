@@ -329,8 +329,8 @@ class nicheSCVI(
         # k_nn: int = 10,
         latent_mean_key: Optional[str] = None,
         latent_var_key: Optional[str] = None,
-        # latent_mean_ct_key: Optional[str] = None,
-        # latent_var_ct_key: Optional[str] = None,
+        latent_mean_ct_key: Optional[str] = None,
+        latent_var_ct_key: Optional[str] = None,
         # ---------------------
         categorical_covariate_keys: Optional[List[str]] = None,
         continuous_covariate_keys: Optional[List[str]] = None,
@@ -375,6 +375,8 @@ class nicheSCVI(
             ObsmField(REGISTRY_KEYS.NICHE_INDEXES_KEY, niche_indexes_key),
             ObsmField(REGISTRY_KEYS.Z1_MEAN_KEY, latent_mean_key),
             ObsmField(REGISTRY_KEYS.Z1_VAR_KEY, latent_var_key),
+            ObsmField(REGISTRY_KEYS.Z1_MEAN_CT_KEY, latent_mean_ct_key),
+            ObsmField(REGISTRY_KEYS.Z1_VAR_CT_KEY, latent_var_ct_key),
             NumericalObsField(
                 REGISTRY_KEYS.INDICES_KEY, cell_index_key, required=False
             ),
