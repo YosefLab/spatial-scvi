@@ -111,7 +111,8 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         k_nn: Optional[int],
         niche_components: Literal[
             "cell_type", "knn", "knn_unweighted", "ct_unweighted"
-        ],
+        ] = "cell_type",
+        niche_combination: Literal["aggregate", "mixture"] = "mixture",
         z1_mean: Optional[torch.Tensor] = None,
         z1_var: Optional[torch.Tensor] = None,
         niche_kl_weight: float = 1.0,
@@ -546,47 +547,83 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         elif self.niche_components == "cell_type_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
 
-        z1_mean_niche = z1_mean[
-            cell_indexes
-        ]  # subset of z1_mean to the cells in the batch
-        z1_var_niche = z1_var[
-            cell_indexes
-        ]  # subset of z1_var to the cells in the batch
+        # OBSERVED DISTRIBUTION-------------------------------------------------------------------------------
 
-        z1_mean_niche = niche_weights * z1_mean_niche
-        z1_var_niche = torch.square(niche_weights) * z1_var_niche
+        # z1_mean_niche  = cells x cell_types x latent OR cells x (latent+1)
+        # z1_mean_niche = z1_mean[
+        #     cell_indexes
+        # ]  # subset of z1_mean to the cells in the batch - then why not putting it into tensors ?
+        # z1_var_niche = z1_var[
+        #     cell_indexes
+        # ]  # subset of z1_var to the cells in the batch
 
-        # -------------------------------------------------BUILD THE AGGREGATED DISTRIBUTIONS----------------------------------------------
+        z1_mean_niche = tensors[REGISTRY_KEYS.Z1_MEAN_CT_KEY]
+        z1_var_niche = tensors[REGISTRY_KEYS.Z1_VAR_CT_KEY]
+        # --------------aggregate---------------------------------------------------------
+        if self.niche_combination == "aggregate":
+            z1_mean_niche = niche_weights * z1_mean_niche
+            z1_var_niche = torch.square(niche_weights) * z1_var_niche
 
-        z1_mean_niche_agg = torch.sum(z1_mean_niche, dim=1)  # shape batch times latent
-        z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
+            z1_mean_niche_agg = torch.sum(
+                z1_mean_niche, dim=1
+            )  # shape batch times latent
+            z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
 
-        niche_observed_distribution = Normal(z1_mean_niche_agg, z1_var_niche_agg.sqrt())
+            niche_observed_distribution = Normal(
+                z1_mean_niche_agg, z1_var_niche_agg.sqrt()
+            )
 
-        # ------------------------------------------------BUILD THE MIXTURE DISTRIBUTION-------------------------------------------------
+        # --------------mixture----------------------------------------------------------
+        # elif self.niche_combination == "mixture":
+        # already computed!
 
-        # niche_mixture_distribution = MixtureSameFamily(niche_latent, niche_weights)
-
-        # Posterior distribution-----------------------------------------------------------
+        # POSTERIOR DISTRIBUTION-------------------------------------------------------------------------------
         niche_mean_mat = generative_outputs["niche_mean"]
         niche_var_mat = generative_outputs["niche_variance"]
 
-        niche_mean_mat = niche_weights * niche_mean_mat
-        niche_var_mat = torch.square(niche_weights) * niche_var_mat
+        # ----------aggregate------------------------------------------------------------
+        if self.niche_combination == "aggregate":
+            niche_mean_mat = niche_weights * niche_mean_mat
+            niche_var_mat = torch.square(niche_weights) * niche_var_mat
 
-        # -----------Niche aggregated posterior distribution---------------------------
-        niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
-        niche_var_agg = torch.sum(niche_var_mat, dim=1)
+            niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
+            niche_var_agg = torch.sum(niche_var_mat, dim=1)
 
-        niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
+            niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
+
+            kl_divergence_niche = kl(
+                niche_posterior_distribution, niche_observed_distribution
+            ).sum(dim=-1)
 
         # --------------Niche mixture posterior distribution--------------------------
+        elif self.niche_combination == "mixture":
+            n_batch = niche_weights.shape[0]
+            kl_divergence_niche = torch.zeros(n_batch).type(torch.float64).to(x.device)
+            for type in range(
+                n_cell_types
+            ):  # TODO can you replace the for loop with a torch.sum?
+                latent_mean_type_prior, latent_var_type_prior = (
+                    z1_mean_niche[:, type, :].squeeze(),
+                    z1_var_niche[:, type, :].squeeze(),
+                )
+                niche_weights_type = niche_weights[:, type].squeeze()
+                latent_mean_type_posterior, latent_var_type_posterior = (
+                    niche_mean_mat[:, type, :].squeeze(),  # batch_size times n_latent
+                    niche_var_mat[:, type, :].squeeze(),
+                )
+                latent_mean_type_prior_batch = latent_mean_type_prior
+                latent_var_type_prior_batch = latent_var_type_prior
 
-        # niche_posterior_distribution = MixtureSameFamily(niche_latent, niche_weights)
+                niche_type_prior_distribution = Normal(
+                    latent_mean_type_prior_batch, latent_var_type_prior_batch.sqrt()
+                )
+                niche_type_posterior_distribution = Normal(
+                    latent_mean_type_posterior, latent_var_type_posterior.sqrt()
+                )
 
-        kl_divergence_niche = kl(
-            niche_posterior_distribution, niche_observed_distribution
-        ).sum(dim=-1)
+                kl_divergence_niche += niche_weights_type * kl(
+                    niche_type_posterior_distribution, niche_type_prior_distribution
+                ).sum(dim=-1)
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
