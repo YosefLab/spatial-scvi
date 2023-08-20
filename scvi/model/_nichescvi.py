@@ -261,7 +261,7 @@ class nicheSCVI(
         niche_composition_key: Optional[str] = None,
         niche_indexes_key: Optional[str] = None,
         niche_distances_key: Optional[str] = None,
-        labels_key: Optional[str] = None,
+        label_key: Optional[str] = None,
         sample_key: Optional[str] = None,
         cell_coordinates_key: Optional[str] = None,
         k_nn: int = 10,
@@ -278,7 +278,7 @@ class nicheSCVI(
         adata.obsm[niche_distances_key] = np.zeros(
             (adata.n_obs, k_nn)
         )  # for each cell, store the distances to its k_nn neighbors
-        n_cell_types = len(adata.obs[labels_key].unique())  # number of cell types
+        n_cell_types = len(adata.obs[label_key].unique())  # number of cell types
         adata.obsm[niche_composition_key] = np.zeros(
             (adata.n_obs, n_cell_types)
         )  # for each cell, store the composition of its neighborhood as a convex vector of cell type proportions
@@ -295,14 +295,14 @@ class nicheSCVI(
 
         get_neighborhood_composition(
             adata=adata,
-            cell_type_column=labels_key,
+            cell_type_column=label_key,
             indices_key=niche_indexes_key,
             niche_composition_key=niche_composition_key,
         )
 
         get_average_latent_per_celltype(
             adata=adata,
-            labels_key=labels_key,
+            labels_key=label_key,
             niche_indexes_key=niche_indexes_key,
             latent_mean_key=latent_mean_key,
             latent_var_key=latent_var_key,
