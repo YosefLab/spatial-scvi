@@ -124,8 +124,8 @@ def test_nichevi():
         latent_var_key="qz1_var",
         latent_mean_niche_keys=["qz1_m_niche_ct", "qz1_m_niche_knn"],
         latent_var_niche_keys=["qz1_var_niche_ct", "qz1_var_niche_knn"],
-        latent_mean_ct_prior="qz1_m_niche_ct_prior",
-        latent_var_ct_prior="qz1_var_niche_ct_prior",
+        # latent_mean_ct_prior="qz1_m_niche_ct_prior",
+        # latent_var_ct_prior="qz1_var_niche_ct_prior",
     )
 
     nicheSCVI.setup_anndata(
@@ -137,6 +137,8 @@ def test_nichevi():
         niche_distances_key="niche_distances",
         latent_mean_key="qz1_m",
         latent_var_key="qz1_var",
+        latent_mean_ct_key="qz1_m_niche_ct",
+        latent_var_ct_key="qz1_var_niche_ct",
     )
 
     niche_setup = {
@@ -167,14 +169,14 @@ def test_nichevi():
         "cell_type_setup_mixture": {
             "niche_components": "cell_type",
             "niche_combination": "mixture",
-            "z1_mean": adata.uns["qz1_m_niche_ct_prior"],
-            "z1_var": adata.uns["qz1_var_niche_ct_prior"],
+            "z1_mean": adata.obsm["qz1_m_niche_ct"],
+            "z1_var": adata.obsm["qz1_var_niche_ct"],
         },
         "cell_type_unweighted_setup_mixture": {
             "niche_components": "cell_type_unweighted",
             "niche_combination": "mixture",
-            "z1_mean": adata.uns["qz1_m_niche_ct_prior"],
-            "z1_var": adata.uns["qz1_var_niche_ct_prior"],
+            "z1_mean": adata.obsm["qz1_m_niche_ct"],
+            "z1_var": adata.obsm["qz1_var_niche_ct"],
         },
     }
 
@@ -184,9 +186,10 @@ def test_nichevi():
 
     vae = nicheSCVI(
         adata,
-        z1_mean=setup_dict["z1_mean"],
-        z1_var=setup_dict["z1_var"],
+        # z1_mean=setup_dict["z1_mean"],
+        # z1_var=setup_dict["z1_var"],
         niche_kl_weight=1,
+        niche_compo_weight=1,
         niche_components=setup_dict["niche_components"],
         niche_combination=setup_dict["niche_combination"],
         gene_likelihood="poisson",
