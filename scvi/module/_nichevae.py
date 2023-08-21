@@ -113,8 +113,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             "cell_type", "knn", "knn_unweighted", "ct_unweighted"
         ] = "cell_type",
         niche_combination: Literal["aggregate", "mixture"] = "mixture",
-        z1_mean: Optional[torch.Tensor] = None,
-        z1_var: Optional[torch.Tensor] = None,
+        # z1_mean: Optional[torch.Tensor] = None,
+        # z1_var: Optional[torch.Tensor] = None,
+        composition_activation: Literal[
+            "softmax", "exp"
+        ] = "softmax",  # TODO think about other ways to transform the logits
+        niche_compo_weight: float = 1.0,
         niche_kl_weight: float = 1.0,
         ###########
         n_batch: int = 0,
@@ -146,6 +150,8 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         super().__init__()
 
         self.niche_kl_weight = niche_kl_weight
+        self.niche_compo_weight = niche_compo_weight
+        self.composition_activation = composition_activation
         # self.z1_mean = torch.tensor(z1_mean)
         # self.z1_var = torch.tensor(z1_var)
         self.niche_components = niche_components
@@ -259,6 +265,18 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_input=n_input_decoder,
             n_output=n_latent_z1,
             n_niche_components=self.n_niche_components,
+            # n_cat_list=cat_list,
+            n_cat_list=None,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            # inject_covariates=deeply_inject_covariates,
+            use_batch_norm=use_batch_norm_decoder,
+            use_layer_norm=use_layer_norm_decoder,
+        )
+
+        self.composition_decoder = Decoder(
+            n_input_decoder,
+            n_cell_types,
             # n_cat_list=cat_list,
             n_cat_list=None,
             n_layers=n_layers,
@@ -498,6 +516,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         # niche_composition, _ = self.cell_type_decoder(decoder_input,*categorical_input) #or y, Idk.
         niche_mean, niche_variance = self.niche_decoder(decoder_input)  # or y, Idk.
+        niche_composition, _ = self.composition_decoder(decoder_input)
 
         return {
             "px": px,
@@ -505,6 +524,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             "pz": pz,
             "niche_mean": niche_mean,
             "niche_variance": niche_variance,
+            "niche_composition": niche_composition,
         }
 
     def loss(
@@ -533,8 +553,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             -1
         )
 
-        n_cell_types = niche_weights_ct.size(dim=-1)
-
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
 
@@ -547,7 +565,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         elif self.niche_components == "cell_type_unweighted":
             niche_weights = torch.ones_like(niche_weights_ct)
 
-        # OBSERVED DISTRIBUTION-------------------------------------------------------------------------------
+        n_batch = niche_weights.shape[0]
+        n_cell_types = niche_weights_ct.size(dim=-1)
+
+        # NICHE OBSERVED DISTRIBUTION-------------------------------------------------------------------------------
 
         # z1_mean_niche  = cells x cell_types x latent OR cells x (latent+1)
         # z1_mean_niche = z1_mean[
@@ -597,7 +618,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         # --------------Niche mixture posterior distribution--------------------------
         elif self.niche_combination == "mixture":
-            n_batch = niche_weights.shape[0]
             kl_divergence_niche = torch.zeros(n_batch).type(torch.float64).to(x.device)
             for type in range(
                 n_cell_types
@@ -611,11 +631,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
                     niche_mean_mat[:, type, :].squeeze(),  # batch_size times n_latent
                     niche_var_mat[:, type, :].squeeze(),
                 )
-                latent_mean_type_prior_batch = latent_mean_type_prior
-                latent_var_type_prior_batch = latent_var_type_prior
 
                 niche_type_prior_distribution = Normal(
-                    latent_mean_type_prior_batch, latent_var_type_prior_batch.sqrt()
+                    latent_mean_type_prior, latent_var_type_prior.sqrt()
                 )
                 niche_type_posterior_distribution = Normal(
                     latent_mean_type_posterior, latent_var_type_posterior.sqrt()
@@ -624,6 +642,14 @@ class nicheVAE(BaseMinifiedModeModuleClass):
                 kl_divergence_niche += niche_weights_type * kl(
                     niche_type_posterior_distribution, niche_type_prior_distribution
                 ).sum(dim=-1)
+
+        # COMPOSITION LOSS----------------------------------------------------------------
+        true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
+        reconstructed_niche_composition = generative_outputs["niche_composition"]
+
+        composition_loss = F.cross_entropy(
+            input=reconstructed_niche_composition, target=true_niche_composition
+        )
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
@@ -646,17 +672,27 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup
 
-        loss = torch.mean(reconst_loss + weighted_kl_local)
+        loss = (
+            torch.mean(reconst_loss + weighted_kl_local)
+            + self.niche_compo_weight * composition_loss
+        )
 
         kl_local = {
             "kl_divergence_l": kl_divergence_l,
             "kl_divergence_z": kl_divergence_z,
         }
+
         return LossOutput(
             loss=loss,
             reconstruction_loss=reconst_loss,
             kl_local=kl_local,
-            extra_metrics={"niche_kl": torch.mean(kl_divergence_niche)},
+            classification_loss=composition_loss,
+            true_labels=true_niche_composition,
+            logits=reconstructed_niche_composition,
+            extra_metrics={
+                "niche_CE": composition_loss,
+                "niche_kl": torch.mean(kl_divergence_niche),
+            },
         )
 
     @torch.inference_mode()
