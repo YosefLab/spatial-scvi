@@ -110,7 +110,7 @@ class nicheSCVI(
         # k_nn: int,  # TODO access th obsm keys to infer these parameters from the data!
         # n_latent_z1: int,
         ###########
-        niche_kl_weight: float = 1.0,
+        # niche_kl_weight: float = 1.0,
         n_hidden: int = 128,
         n_latent: int = 10,
         n_layers: int = 1,
@@ -150,7 +150,7 @@ class nicheSCVI(
             k_nn=self.k_nn,
             n_latent_z1=self.n_latent_mean,
             ###########
-            niche_kl_weight=niche_kl_weight,
+            # niche_kl_weight=niche_kl_weight,
             n_batch=n_batch,
             n_labels=self.summary_stats.n_labels,
             n_continuous_cov=self.summary_stats.get("n_extra_continuous_covs", 0),
@@ -532,6 +532,8 @@ def get_niche_indexes(
             :, 1:
         ]
 
+    print("Saved niche_indexes and niche_distances in adata.obsm")
+
     return None
 
 
@@ -576,6 +578,8 @@ def get_neighborhood_composition(
     )
 
     adata.obsm[niche_composition_key] = neighborhood_composition_df
+
+    print("Saved niche_composition in adata.obsm")
 
     return None
 
