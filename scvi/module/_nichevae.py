@@ -118,6 +118,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         composition_activation: Literal[
             "softmax", "exp"
         ] = "softmax",  # TODO think about other ways to transform the logits
+        elbo_weight: float = 1.0,
         niche_compo_weight: float = 1.0,
         niche_kl_weight: float = 1.0,
         ###########
@@ -149,6 +150,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
     ):
         super().__init__()
 
+        self.elbo_weight = elbo_weight
         self.niche_kl_weight = niche_kl_weight
         self.niche_compo_weight = niche_compo_weight
         self.composition_activation = composition_activation
@@ -563,7 +565,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             niche_weights = torch.ones_like(niche_weights_distances)
 
         elif self.niche_components == "cell_type_unweighted":
-            niche_weights = torch.ones_like(niche_weights_ct)
+            niche_weights = torch.ones_like(niche_weights_ct) / niche_weights_ct.size(
+                dim=-1
+            )
 
         n_batch = niche_weights.shape[0]
         n_cell_types = niche_weights_ct.size(dim=-1)
@@ -578,7 +582,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         #     cell_indexes
         # ]  # subset of z1_var to the cells in the batch
 
-        z1_mean_niche = tensors[REGISTRY_KEYS.Z1_MEAN_CT_KEY]
+        z1_mean_niche = tensors[
+            REGISTRY_KEYS.Z1_MEAN_CT_KEY
+        ]  # batch times cell_types times n_latent
         z1_var_niche = tensors[REGISTRY_KEYS.Z1_VAR_CT_KEY]
         # --------------aggregate---------------------------------------------------------
         if self.niche_combination == "aggregate":
@@ -663,11 +669,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         else:
             kl_divergence_l = torch.tensor(0.0, device=x.device)
 
-        reconst_loss = -generative_outputs["px"].log_prob(x).sum(-1)
+        reconst_loss = -self.elbo_weight * generative_outputs["px"].log_prob(x).sum(-1)
 
-        kl_local_for_warmup = kl_divergence_z  # TODO discard?
+        kl_local_for_warmup = self.elbo_weight * kl_divergence_z  # TODO discard?
         kl_local_no_warmup = (
-            kl_divergence_l + self.niche_kl_weight * kl_divergence_niche
+            self.elbo_weight * kl_divergence_l
+            + self.niche_kl_weight * kl_divergence_niche
         )
 
         weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup
