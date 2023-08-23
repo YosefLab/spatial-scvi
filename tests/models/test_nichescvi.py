@@ -91,9 +91,12 @@ LEGACY_SETUP_DICT = {
 }
 
 
+n_latent = 2
+
+
 def test_nichevi():
     adata = synthetic_iid(
-        batch_size=200,
+        batch_size=10,
         n_genes=100,
         n_proteins=0,
         n_regions=0,
@@ -142,41 +145,26 @@ def test_nichevi():
     )
 
     niche_setup = {
-        "cell_type_setup": {
-            "niche_components": "cell_type",
-            "niche_combination": "aggregate",
-            "z1_mean": adata.obsm["qz1_m_niche_ct"],
-            "z1_var": adata.obsm["qz1_var_niche_ct"],
-        },
-        "knn_setup": {
-            "niche_components": "knn",
-            "niche_combination": "aggregate",
-            "z1_mean": adata.obsm["qz1_m_niche_knn"],
-            "z1_var": adata.obsm["qz1_var_niche_knn"],
-        },
-        "knn_unweighted_setup": {
-            "niche_components": "knn_unweighted",
-            "niche_combination": "aggregate",
-            "z1_mean": adata.obsm["qz1_m_niche_knn"],
-            "z1_var": adata.obsm["qz1_var_niche_knn"],
-        },
-        "cell_type_unweighted_setup": {
-            "niche_components": "cell_type_unweighted",
-            "niche_combination": "aggregate",
-            "z1_mean": adata.obsm["qz1_m_niche_ct"],
-            "z1_var": adata.obsm["qz1_var_niche_ct"],
-        },
-        "cell_type_setup_mixture": {
+        "mix_kl0_compo0": {
             "niche_components": "cell_type",
             "niche_combination": "mixture",
-            "z1_mean": adata.obsm["qz1_m_niche_ct"],
-            "z1_var": adata.obsm["qz1_var_niche_ct"],
+            "elbo_weight": 1,
+            "niche_kl_weight": 0,
+            "niche_compo_weight": 0,
         },
-        "cell_type_unweighted_setup_mixture": {
+        "mix_unif_kl0_compo0": {
             "niche_components": "cell_type_unweighted",
             "niche_combination": "mixture",
-            "z1_mean": adata.obsm["qz1_m_niche_ct"],
-            "z1_var": adata.obsm["qz1_var_niche_ct"],
+            "elbo_weight": 1,
+            "niche_kl_weight": 0,
+            "niche_compo_weight": 0,
+        },
+        "mix_kl1_compo1": {
+            "niche_components": "cell_type",
+            "niche_combination": "mixture",
+            "elbo_weight": 1,
+            "niche_kl_weight": 1,
+            "niche_compo_weight": 1,
         },
     }
 
@@ -188,8 +176,9 @@ def test_nichevi():
         adata,
         # z1_mean=setup_dict["z1_mean"],
         # z1_var=setup_dict["z1_var"],
-        niche_kl_weight=1,
-        niche_compo_weight=1,
+        elbo_weight=setup_dict["elbo_weight"],
+        niche_kl_weight=setup_dict["niche_kl_weight"],
+        niche_compo_weight=setup_dict["niche_compo_weight"],
         niche_components=setup_dict["niche_components"],
         niche_combination=setup_dict["niche_combination"],
         gene_likelihood="poisson",
