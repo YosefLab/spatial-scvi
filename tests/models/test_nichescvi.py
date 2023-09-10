@@ -181,9 +181,9 @@ def test_nichevi():
         niche_compo_weight=setup_dict["niche_compo_weight"],
         niche_components=setup_dict["niche_components"],
         niche_combination=setup_dict["niche_combination"],
-        gene_likelihood="poisson",
-        n_layers=1,
-        n_latent=n_latent_z1,
+        gene_likelihood=LIKELIHOOD,
+        n_layers=N_LAYERS,
+        n_latent=N_LATENT,
         use_batch_norm="both",
         use_layer_norm="none",
     )

@@ -127,6 +127,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         n_hidden: Tunable[int] = 128,
         n_latent: Tunable[int] = 10,
         n_layers: Tunable[int] = 1,
+        ###########
+        n_layers_niche: int = 1,
+        n_layers_compo: int = 1,
+        ###########
         n_continuous_cov: int = 0,
         n_cats_per_cov: Optional[Iterable[int]] = None,
         dropout_rate: Tunable[float] = 0.1,
@@ -269,7 +273,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_niche_components=self.n_niche_components,
             # n_cat_list=cat_list,
             n_cat_list=None,
-            n_layers=n_layers,
+            n_layers=n_layers_niche,
             n_hidden=n_hidden,
             # inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
@@ -281,7 +285,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_cell_types,
             # n_cat_list=cat_list,
             n_cat_list=None,
-            n_layers=n_layers,
+            n_layers=n_layers_compo,
             n_hidden=n_hidden,
             # inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
