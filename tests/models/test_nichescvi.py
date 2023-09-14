@@ -91,12 +91,15 @@ LEGACY_SETUP_DICT = {
 }
 
 
-n_latent = 2
+N_LAYERS = 1
+N_LATENT = 2
+LIKELIHOOD = "nb"
+K_NN = 5
 
 
 def test_nichevi():
     adata = synthetic_iid(
-        batch_size=10,
+        batch_size=256,
         n_genes=100,
         n_proteins=0,
         n_regions=0,
@@ -108,11 +111,9 @@ def test_nichevi():
         return_mudata=False,
     )
 
-    adata.obsm["qz1_m"] = np.random.normal(size=(adata.shape[0], n_latent))
+    adata.obsm["qz1_m"] = np.random.normal(size=(adata.shape[0], N_LATENT))
     # positive variance:
-    adata.obsm["qz1_var"] = np.random.normal(size=(adata.shape[0], n_latent)) ** 2
-
-    n_latent_z1 = n_latent
+    adata.obsm["qz1_var"] = np.random.normal(size=(adata.shape[0], N_LATENT)) ** 2
 
     nicheSCVI.preprocessing_anndata(
         adata,
@@ -122,7 +123,7 @@ def test_nichevi():
         label_key="labels",
         sample_key="batch",
         cell_coordinates_key="coordinates",
-        k_nn=5,
+        k_nn=K_NN,
         latent_mean_key="qz1_m",
         latent_var_key="qz1_var",
         latent_mean_niche_keys=["qz1_m_niche_ct", "qz1_m_niche_knn"],
