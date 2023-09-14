@@ -118,7 +118,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         composition_activation: Literal[
             "softmax", "exp"
         ] = "softmax",  # TODO think about other ways to transform the logits
-        elbo_weight: float = 1.0,
+        rec_weight: float = 1.0,
         niche_compo_weight: float = 1.0,
         niche_kl_weight: float = 1.0,
         ###########
@@ -154,10 +154,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
     ):
         super().__init__()
 
-        self.elbo_weight = elbo_weight
+        self.rec_weight = rec_weight
         self.niche_kl_weight = niche_kl_weight
         self.niche_compo_weight = niche_compo_weight
         self.composition_activation = composition_activation
+        self.n_cats_per_cov = n_cats_per_cov
         # self.z1_mean = torch.tensor(z1_mean)
         # self.z1_var = torch.tensor(z1_var)
         self.niche_components = niche_components
@@ -271,13 +272,14 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_input=n_input_decoder,
             n_output=n_latent_z1,
             n_niche_components=self.n_niche_components,
-            # n_cat_list=cat_list,
-            n_cat_list=None,
+            n_cat_list=cat_list,
+            # n_cat_list=None,
             n_layers=n_layers_niche,
             n_hidden=n_hidden,
             # inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
+            **_extra_decoder_kwargs,
         )
 
         self.composition_decoder = Decoder(
@@ -290,6 +292,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             # inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
+            **_extra_decoder_kwargs,
         )
 
     def _get_inference_input(
@@ -673,12 +676,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         else:
             kl_divergence_l = torch.tensor(0.0, device=x.device)
 
-        reconst_loss = -self.elbo_weight * generative_outputs["px"].log_prob(x).sum(-1)
+        reconst_loss = -self.rec_weight * generative_outputs["px"].log_prob(x).sum(-1)
 
-        kl_local_for_warmup = self.elbo_weight * kl_divergence_z  # TODO discard?
+        kl_local_for_warmup = kl_divergence_z
         kl_local_no_warmup = (
-            self.elbo_weight * kl_divergence_l
-            + self.niche_kl_weight * kl_divergence_niche
+            kl_divergence_l + self.niche_kl_weight * kl_divergence_niche
         )
 
         weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup

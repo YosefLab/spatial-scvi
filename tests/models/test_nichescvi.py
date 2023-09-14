@@ -149,35 +149,35 @@ def test_nichevi():
         "mix_kl0_compo0": {
             "niche_components": "cell_type",
             "niche_combination": "mixture",
-            "elbo_weight": 1,
+            "rec_weight": 1,
             "niche_kl_weight": 0,
             "niche_compo_weight": 0,
         },
         "mix_unif_kl0_compo0": {
             "niche_components": "cell_type_unweighted",
             "niche_combination": "mixture",
-            "elbo_weight": 1,
+            "rec_weight": 1,
             "niche_kl_weight": 0,
             "niche_compo_weight": 0,
         },
         "mix_kl1_compo1": {
             "niche_components": "cell_type",
             "niche_combination": "mixture",
-            "elbo_weight": 1,
+            "rec_weight": 1,
             "niche_kl_weight": 1,
             "niche_compo_weight": 1,
         },
     }
 
     # setup_dict = niche_setup["knn_unweighted_setup"]
-    setup_dict = niche_setup["cell_type_setup_mixture"]
+    setup_dict = niche_setup["mix_kl1_compo1"]
     # setup_dict = niche_setup["knn_setup"]
 
     vae = nicheSCVI(
         adata,
         # z1_mean=setup_dict["z1_mean"],
         # z1_var=setup_dict["z1_var"],
-        elbo_weight=setup_dict["elbo_weight"],
+        rec_weight=setup_dict["rec_weight"],
         niche_kl_weight=setup_dict["niche_kl_weight"],
         niche_compo_weight=setup_dict["niche_compo_weight"],
         niche_components=setup_dict["niche_components"],
