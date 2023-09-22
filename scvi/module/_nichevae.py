@@ -473,8 +473,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         else:
             categorical_input = ()
 
-        # categorical_input = ()
-
         if transform_batch is not None:
             batch_index = torch.ones_like(batch_index) * transform_batch
 
@@ -523,9 +521,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             pl = Normal(local_library_log_means, local_library_log_vars.sqrt())
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
-        # niche_composition, _ = self.cell_type_decoder(decoder_input,*categorical_input) #or y, Idk.
-        niche_mean, niche_variance = self.niche_decoder(decoder_input)  # or y, Idk.
-        niche_composition, _ = self.composition_decoder(decoder_input)
+        niche_mean, niche_variance = self.niche_decoder(
+            decoder_input, batch_index, *categorical_input
+        )  # or y, Idk.
+        niche_composition, _ = self.composition_decoder(
+            decoder_input, batch_index, *categorical_input
+        )
 
         return {
             "px": px,
