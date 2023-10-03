@@ -190,10 +190,12 @@ def test_nichevi():
     )
 
     vae.train(1)
+    print("I am here")
     vae.train(3)
     vae.get_elbo(indices=vae.validation_indices)
     vae.get_normalized_expression()
     vae.get_latent_representation()
+    print("Finished training")
     vae.differential_expression(groupby="labels", group1="label_1")
     vae.differential_expression(groupby="labels", group1="label_1", group2="label_2")
 

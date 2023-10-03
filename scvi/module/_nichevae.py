@@ -678,16 +678,22 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             kl_divergence_l = torch.tensor(0.0, device=x.device)
 
         reconst_loss = -self.rec_weight * generative_outputs["px"].log_prob(x).sum(-1)
+        weighted_reconst_loss = (
+            kl_weight * reconst_loss
+        )  # TODO rename kl_weight to rec_weight
 
         kl_local_for_warmup = kl_divergence_z
         kl_local_no_warmup = (
             kl_divergence_l + self.niche_kl_weight * kl_divergence_niche
         )
 
-        weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup
+        # weighted_kl_local = kl_weight * kl_local_for_warmup + kl_local_no_warmup
+        weighted_kl_local = (
+            kl_local_for_warmup + kl_local_no_warmup
+        )  # means that we ignore kl_weight warmup
 
         loss = (
-            torch.mean(reconst_loss + weighted_kl_local)
+            torch.mean(weighted_reconst_loss + weighted_kl_local)
             + self.niche_compo_weight * composition_loss
         )
 
