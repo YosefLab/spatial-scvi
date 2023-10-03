@@ -276,7 +276,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             # n_cat_list=None,
             n_layers=n_layers_niche,
             n_hidden=n_hidden,
-            # inject_covariates=deeply_inject_covariates,
+            inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
             **_extra_decoder_kwargs,
