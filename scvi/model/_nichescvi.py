@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from sklearn.neighbors import NearestNeighbors
-
+from scvi.nearest_neighbors import NeighborsOutput, pynndescent
 
 from scvi import REGISTRY_KEYS
 from scvi._types import MinifiedDataType
@@ -505,6 +505,12 @@ def get_niche_indexes(
 
     for sample in adata.obs[sample_key].unique():
         sample_coord = adata.obsm[cell_coordinates_key][adata.obs[sample_key] == sample]
+
+        # pynndescent is not faster than sklearn.neighbors.NearestNeighbors in such low dimensions (2D space)
+        # neigh_output = pynndescent(
+        #     X=sample_coord, n_neighbors=k_nn + 1, random_state=0, n_jobs=-1
+        # )
+        # indices, distances = neigh_output.indices, neigh_output.distances
 
         # Create a NearestNeighbors object
         knn = NearestNeighbors(n_neighbors=k_nn + 1)

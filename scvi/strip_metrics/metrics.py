@@ -212,23 +212,13 @@ class SpatialAnalysis:
                 n_cells = len(adata_fov)
 
                 # knn in latent space
-                latent_k_nn = compute_k_nn(
+                cells_in_the_latent_neighborhood = compute_k_nn(
                     adata_fov,
                     k_nn,
                     latent_space_key,
                     method="sklearn",
                     n_jobs=-1,
                 )
-
-                # lknn_indices = latent_k_nn.indices
-                # lknn_indptr = latent_k_nn.indptr
-
-                # For each cell, get the neighbors in Z
-                cells_in_the_latent_neighborhood = latent_k_nn
-                # [
-                #     np.array(get_values_row(lknn_indices, lknn_indptr, cell))
-                #     for cell in range(n_cells)
-                # ]
 
                 if latent_space_key in z2_versus_z1:
                     latent_indexes_dict[latent_space_key].append(
@@ -238,17 +228,19 @@ class SpatialAnalysis:
                 if "distance" in set_of_metrics:
                     xy = adata_fov.obsm[self.spatial_coord_key].values
 
-                    spatial_coord_of_latent_neighbors = [
-                        xy[cells_in_the_latent_neighborhood[cell], :]
-                        for cell in range(n_cells)
+                    # spatial_coord_of_latent_neighbors = [
+                    #     xy[cells_in_the_latent_neighborhood[cell], :]
+                    #     for cell in range(n_cells)
+                    # ]
+
+                    # spatial_coord_of_latent_neighbors_fov = np.stack(
+                    #     spatial_coord_of_latent_neighbors,
+                    #     axis=0,
+                    # )
+
+                    spatial_coord_of_latent_neighbors_fov = xy[
+                        cells_in_the_latent_neighborhood
                     ]
-
-                    spatial_coord_of_latent_neighbors_fov = np.stack(
-                        spatial_coord_of_latent_neighbors,
-                        axis=0,
-                    )
-
-                    # print(spatial_coord_of_latent_neighbors_fov.shape)
 
                     # median---------------------------------------------------------------------------
                     # make this compuation Parallel:
