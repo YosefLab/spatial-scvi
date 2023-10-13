@@ -39,7 +39,9 @@ def get_values_row(indices, indptr, i):
 
 
 def compute_similarity(
-    vector1: np.array, vectors_list: np.array, measure: str
+    vector1: np.array,
+    vectors_list: np.array,
+    measure: Literal["euclidean", "pearson", "spearman", "cosine"] = "euclidean",
 ) -> np.array:
     """Compute similarity between one vector and a set of vectors.
 
@@ -216,7 +218,7 @@ class SpatialAnalysis:
                     adata_fov,
                     k_nn,
                     latent_space_key,
-                    method="sklearn",
+                    method="pynn",
                     n_jobs=-1,
                 )
 
@@ -266,71 +268,72 @@ class SpatialAnalysis:
                     latent_and_phys_corr.append(reducted_dists.flatten())
 
                 # similarity between neighborhoods------------------------------
-                # if "similarity" in set_of_metrics:
-                #     similarity_parallel = Parallel(n_jobs=-1)(
-                #         delayed(compute_similarity)(
-                #             ct[i].reshape(1, -1),
-                #             ct[cells_in_the_latent_neighborhood[i]],
-                #             similarity_metric,
-                #         )
-                #         for i in range(len(xy))
-                #     )
-
-                #     similarity_parallel = np.squeeze(np.array(similarity_parallel))
-
-                #     if reduction[1] == "median":
-                #         # make this computation Parallel:
-                #         reducted_similarity = np.median(similarity_parallel, axis=-1)
-
-                #     if reduction[1] == "mean":
-                #         reducted_similarity = np.mean(similarity_parallel, axis=-1)
-
-                #     if reduction[1] == None:
-                #         reducted_similarity = similarity_parallel
-
-                #     neighborhood_similarity.append(reducted_similarity.flatten())
-
-                # similarity between neighborhoods------------------------------
                 if "similarity" in set_of_metrics:
                     ct = adata_fov.obsm[self.ct_composition_key].values
+                    similarity_parallel = Parallel(n_jobs=-1)(
+                        delayed(compute_similarity)(
+                            ct[i].reshape(1, -1),
+                            ct[cells_in_the_latent_neighborhood[i]],
+                            similarity_metric,
+                        )
+                        for i in range(len(xy))
+                    )
+
+                    similarity_parallel = np.squeeze(np.array(similarity_parallel))
 
                     if reduction[1] == "median":
-                        reducted_similarity = [
-                            np.median(
-                                compute_similarity(
-                                    ct[i].reshape(1, -1),
-                                    ct[cells_in_the_latent_neighborhood[i]],
-                                    similarity_metric,
-                                )
-                            )
-                            for i in range(len(xy))
-                        ]
+                        # make this computation Parallel:
+                        reducted_similarity = np.median(similarity_parallel, axis=-1)
 
                     if reduction[1] == "mean":
-                        reducted_similarity = [
-                            np.mean(
-                                compute_similarity(
-                                    ct[i].reshape(1, -1),
-                                    ct[cells_in_the_latent_neighborhood[i]],
-                                    similarity_metric,
-                                )
-                            )
-                            for i in range(len(xy))
-                        ]
+                        reducted_similarity = np.mean(similarity_parallel, axis=-1)
 
-                    if reduction[1] is None:
-                        reducted_similarity = [
-                            compute_similarity(
-                                ct[i].reshape(1, -1),
-                                ct[cells_in_the_latent_neighborhood[i]],
-                                similarity_metric,
-                            )
-                            for i in range(len(xy))
-                        ]
+                    if reduction[1] == None:
+                        reducted_similarity = similarity_parallel
 
-                    neighborhood_similarity.append(
-                        np.array(reducted_similarity).flatten()
-                    )
+                    neighborhood_similarity.append(reducted_similarity.flatten())
+
+                # # similarity between neighborhoods------------------------------
+                # if "similarity" in set_of_metrics:
+                #     ct = adata_fov.obsm[self.ct_composition_key].values
+
+                #     if reduction[1] == "median":
+                #         reducted_similarity = [
+                #             np.median(
+                #                 compute_similarity(
+                #                     ct[i].reshape(1, -1),
+                #                     ct[cells_in_the_latent_neighborhood[i]],
+                #                     similarity_metric,
+                #                 )
+                #             )
+                #             for i in range(len(xy))
+                #         ]
+
+                #     if reduction[1] == "mean":
+                #         reducted_similarity = [
+                #             np.mean(
+                #                 compute_similarity(
+                #                     ct[i].reshape(1, -1),
+                #                     ct[cells_in_the_latent_neighborhood[i]],
+                #                     similarity_metric,
+                #                 )
+                #             )
+                #             for i in range(len(xy))
+                #         ]
+
+                #     if reduction[1] is None:
+                #         reducted_similarity = [
+                #             compute_similarity(
+                #                 ct[i].reshape(1, -1),
+                #                 ct[cells_in_the_latent_neighborhood[i]],
+                #                 similarity_metric,
+                #             )
+                #             for i in range(len(xy))
+                #         ]
+
+                #     neighborhood_similarity.append(
+                #         np.array(reducted_similarity).flatten()
+                #     )
 
                 # neighborhood_similarity[fov] = reducted_similarity
 
