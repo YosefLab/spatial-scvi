@@ -1,4 +1,4 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, NamedTuple
 
 import anndata as ad
 import matplotlib.pyplot as plt
@@ -129,6 +129,24 @@ def compute_k_nn(
     return latent_k_nn_indices
 
 
+class _KEYS_SPATIAL(NamedTuple):
+    DISTANCE_KEY: str = "latent_and_phys_corr_"
+    SIMILARITY_KEY: str = "neighborhood_similarity_"
+    LATENT_OVERLAP_KEY: str = "latent_overlap"
+    CLUSTER_KEY: str = "leiden_"
+
+
+class _METRIC_TITLE(NamedTuple):
+    DISTANCE_KEY: str = "distance in micron"
+    SIMILARITY_KEY: str = "correlation"
+    LATENT_OVERLAP_KEY: str = "Jaccard index"
+
+
+SET_OF_METRICS = ["distance", "similarity", "latent_overlap"]
+KEYS_SPATIAL = _KEYS_SPATIAL()
+METRIC_TITLE = _METRIC_TITLE()
+
+
 class SpatialAnalysis:
     def __init__(
         self,
@@ -169,7 +187,7 @@ class SpatialAnalysis:
     def compute_metrics(
         self,
         k_nn: int,
-        set_of_metrics: list[str] = ["distance", "similarity", "latent_overlap"],
+        set_of_metrics: list[str] = SET_OF_METRICS,
         similarity_metric: str = "spearman",
         reduction: list[str] = ["median", "mean"],
     ) -> None:
@@ -190,26 +208,29 @@ class SpatialAnalysis:
             The similarity metric to use. The options are: "spearman", "pearson", "jaccard".
         reduction
             The reduction to apply to the similarity metric. The options are: "median", "mean", None.
-        z2_versus_z1
         """
 
-        z2_versus_z1 = [self.z1_reference, self.z2_comparison]
-
         self.set_of_metrics = set_of_metrics
+        self.similarity_metric = similarity_metric
+        self.reduction = reduction
 
+        z2_versus_z1 = [self.z1_reference, self.z2_comparison]
         fov_names = self.adata.obs[self.sample_key].unique().tolist()
 
         latent_indexes_dict = {}
 
-        for latent_space_key in self.latent_space_keys:
+        # Loop over latent spaces:
+        for latent_space_key in tqdm(
+            self.latent_space_keys, desc=latent_space_key, colour="green"
+        ):
             latent_and_phys_corr = []
             neighborhood_similarity = []
 
             if latent_space_key in z2_versus_z1:
                 latent_indexes_dict[latent_space_key] = []
 
-            # for fov in fov_names:
-            for fov in tqdm(fov_names, desc=latent_space_key, colour="green"):
+            # Loop over fovs:
+            for fov in tqdm(fov_names, desc=fov, colour="blue"):
                 adata_fov = self.adata[self.adata.obs[self.sample_key] == fov].copy()
                 n_cells = len(adata_fov)
 
@@ -230,16 +251,6 @@ class SpatialAnalysis:
                 if "distance" in set_of_metrics:
                     xy = adata_fov.obsm[self.spatial_coord_key].values
 
-                    # spatial_coord_of_latent_neighbors = [
-                    #     xy[cells_in_the_latent_neighborhood[cell], :]
-                    #     for cell in range(n_cells)
-                    # ]
-
-                    # spatial_coord_of_latent_neighbors_fov = np.stack(
-                    #     spatial_coord_of_latent_neighbors,
-                    #     axis=0,
-                    # )
-
                     spatial_coord_of_latent_neighbors_fov = xy[
                         cells_in_the_latent_neighborhood
                     ]
@@ -251,7 +262,7 @@ class SpatialAnalysis:
                             xy[i].reshape(1, 2),
                             spatial_coord_of_latent_neighbors_fov[i],
                         )
-                        for i in range(len(xy))
+                        for i in range(n_cells)
                     )
 
                     dists_parallel = np.squeeze(np.array(dists_parallel))
@@ -272,17 +283,16 @@ class SpatialAnalysis:
                     ct = adata_fov.obsm[self.ct_composition_key].values
                     similarity_parallel = Parallel(n_jobs=-1)(
                         delayed(compute_similarity)(
-                            ct[i].reshape(1, -1),
+                            ct[i],
                             ct[cells_in_the_latent_neighborhood[i]],
                             similarity_metric,
                         )
-                        for i in range(len(xy))
+                        for i in range(n_cells)
                     )
 
                     similarity_parallel = np.squeeze(np.array(similarity_parallel))
 
                     if reduction[1] == "median":
-                        # make this computation Parallel:
                         reducted_similarity = np.median(similarity_parallel, axis=-1)
 
                     if reduction[1] == "mean":
@@ -293,53 +303,9 @@ class SpatialAnalysis:
 
                     neighborhood_similarity.append(reducted_similarity.flatten())
 
-                # # similarity between neighborhoods------------------------------
-                # if "similarity" in set_of_metrics:
-                #     ct = adata_fov.obsm[self.ct_composition_key].values
-
-                #     if reduction[1] == "median":
-                #         reducted_similarity = [
-                #             np.median(
-                #                 compute_similarity(
-                #                     ct[i].reshape(1, -1),
-                #                     ct[cells_in_the_latent_neighborhood[i]],
-                #                     similarity_metric,
-                #                 )
-                #             )
-                #             for i in range(len(xy))
-                #         ]
-
-                #     if reduction[1] == "mean":
-                #         reducted_similarity = [
-                #             np.mean(
-                #                 compute_similarity(
-                #                     ct[i].reshape(1, -1),
-                #                     ct[cells_in_the_latent_neighborhood[i]],
-                #                     similarity_metric,
-                #                 )
-                #             )
-                #             for i in range(len(xy))
-                #         ]
-
-                #     if reduction[1] is None:
-                #         reducted_similarity = [
-                #             compute_similarity(
-                #                 ct[i].reshape(1, -1),
-                #                 ct[cells_in_the_latent_neighborhood[i]],
-                #                 similarity_metric,
-                #             )
-                #             for i in range(len(xy))
-                #         ]
-
-                #     neighborhood_similarity.append(
-                #         np.array(reducted_similarity).flatten()
-                #     )
-
-                # neighborhood_similarity[fov] = reducted_similarity
-
             if "distance" in set_of_metrics:
                 self.adata.obs[
-                    "latent_and_phys_corr_" + latent_space_key
+                    KEYS_SPATIAL.DISTANCE_KEY + latent_space_key
                 ] = np.concatenate(latent_and_phys_corr)
                 rprint(
                     "Saved latent and physical correlation in the adata.obs column latent_and_phys_corr_"
@@ -349,7 +315,7 @@ class SpatialAnalysis:
 
             if "similarity" in set_of_metrics:
                 self.adata.obs[
-                    "neighborhood_similarity_" + latent_space_key
+                    KEYS_SPATIAL.SIMILARITY_KEY + latent_space_key
                 ] = np.concatenate(neighborhood_similarity)
                 rprint(
                     "Saved compositional neighborhood similarity in the adata.obs column neighborhood_similarity_"
@@ -362,7 +328,7 @@ class SpatialAnalysis:
             if len(latent_indexes_dict) == 0:
                 raise ValueError(
                     "latent_indexes_dict is empty. "
-                    "Please provide the keys for the 2 latent spaces you want to compare as a list: z2_versus_z1=[z1, z2]"
+                    "Please provide the keys for the 2 latent spaces you want to compare with z1_reference and z2_comparison."
                 )
             # compute the jaccard index between the two values of the dictionary latent_indexes_dict
             latent_neighbors_1 = np.concatenate(
@@ -371,7 +337,7 @@ class SpatialAnalysis:
             latent_neighbors_2 = np.concatenate(
                 latent_indexes_dict[list(latent_indexes_dict.keys())[1]]
             )
-            self.adata.obs["latent_overlap"] = [
+            self.adata.obs[KEYS_SPATIAL.LATENT_OVERLAP_KEY] = [
                 jaccard_score(latent_neighbors_1[i], latent_neighbors_2[i])
                 for i in range(len(latent_neighbors_1))
             ]
@@ -422,11 +388,28 @@ class SpatialAnalysis:
 
         return None
 
-    def plot_distance(self, plot_type: Literal["kde", "ecdf"] = "ecdf"):
+    def plot_metrics(
+        self,
+        metric: Literal[*SET_OF_METRICS],
+        plot_type: Literal["kde", "ecdf"] = "ecdf",
+    ):
+        if metric == "distance":
+            metric_key = KEYS_SPATIAL.DISTANCE_KEY
+            metric_title = self.reduction[0] + " " + METRIC_TITLE.DISTANCE_KEY
+        if metric == "similarity":
+            metric_key = KEYS_SPATIAL.SIMILARITY_KEY
+            metric_title = (
+                self.reduction[1]
+                + " "
+                + self.similarity_metric
+                + " "
+                + METRIC_TITLE.SIMILARITY_KEY
+            )
+
         for idx, latent_key in enumerate(self.latent_space_keys):
             if plot_type == "kde":
                 sns.kdeplot(
-                    data=self.adata.obs["latent_and_phys_corr_" + latent_key],
+                    data=self.adata.obs[metric_key + latent_key],
                     label=latent_key,
                     color=self.color_plots[idx],
                     alpha=0.5,
@@ -434,7 +417,7 @@ class SpatialAnalysis:
 
             if plot_type == "ecdf":
                 sns.ecdfplot(
-                    data=self.adata.obs["latent_and_phys_corr_" + latent_key],
+                    data=self.adata.obs[metric_key + latent_key],
                     label=latent_key,
                     color=self.color_plots[idx],
                     alpha=0.5,
@@ -444,36 +427,8 @@ class SpatialAnalysis:
             plt.title("Kernel density estimation")
         if plot_type == "ecdf":
             plt.title("Empirical cumulative distribution function")
-        plt.xlabel("Median distance in micron")
+        plt.xlabel(metric_title)
         plt.legend()  # Add a legend to display the labels
-        plt.show()
-
-        return None
-
-    def plot_similarity(self, plot_type: Literal["kde", "ecdf"] = "ecdf"):
-        for idx, latent_key in enumerate(self.latent_space_keys):
-            if plot_type == "kde":
-                sns.kdeplot(
-                    data=self.adata.obs["neighborhood_similarity_" + latent_key],
-                    label=latent_key,
-                    color=self.color_plots[idx],
-                    alpha=0.5,
-                )
-
-            if plot_type == "ecdf":
-                sns.ecdfplot(
-                    data=self.adata.obs["neighborhood_similarity_" + latent_key],
-                    label=latent_key,
-                    color=self.color_plots[idx],
-                    alpha=0.5,
-                )
-
-        if plot_type == "kde":
-            plt.title("Kernel density estimation")
-        if plot_type == "ecdf":
-            plt.title("Empirical cumulative distribution function")
-        plt.xlabel("Mean Spearman correlation")
-        plt.legend()
         plt.show()
 
         return None
@@ -484,9 +439,9 @@ class SpatialAnalysis:
         distribution: Literal["distance", "similarity"] = "distance",
     ):
         if distribution == "distance":
-            metric = "latent_and_phys_corr_"
+            metric = KEYS_SPATIAL.DISTANCE_KEY
         if distribution == "similarity":
-            metric = "neighborhood_similarity_"
+            metric = KEYS_SPATIAL.SIMILARITY_KEY
 
         x = self.adata.obs[metric + self.z1_reference]
         p_values = []
@@ -528,8 +483,12 @@ class SpatialAnalysis:
 
         return None
 
-    def show_clusters(
-        self, resolution: float = 0.5, sample_subset: Optional[list[str]] = None
+    def leiden_clusters(
+        self,
+        resolution: float = 0.5,
+        leiden_key_reference: Optional[str] = None,
+        sample_subset: Optional[list[str]] = None,
+        plot: bool = True,
     ):
         """
         Show the clusters in the spatial coordinates.
@@ -542,15 +501,25 @@ class SpatialAnalysis:
             The subset of samples to consider in the spatial analysis.
         """
 
-        sc.pp.neighbors(self.adata, use_rep=self.z1_reference)
-        sc.tl.leiden(self.adata, resolution, key_added="leiden_" + self.z1_reference)
+        leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
 
-        rprint("Computed leiden clusters for latent space: " + self.z1_reference)
+        if leiden_key_reference not in self.adata.obs.columns:
+            leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
+            sc.pp.neighbors(self.adata, use_rep=self.z1_reference)
+            sc.tl.leiden(self.adata, resolution, key_added=leiden_key_reference)
+
+            rprint(
+                "Saved leiden clusters for reference latent space in "
+                + leiden_key_reference
+            )
 
         sc.pp.neighbors(self.adata, use_rep=self.z2_comparison)
-        sc.tl.leiden(self.adata, resolution, key_added="leiden_" + self.z2_comparison)
+        sc.tl.leiden(self.adata, resolution, key_added=leiden_key_comparison)
 
-        rprint("Computed leiden clusters for latent space: " + self.z2_comparison)
+        rprint(
+            "Saved leiden clusters for 'spatial' latent space in  "
+            + leiden_key_comparison
+        )
 
         sample_names = (
             self.adata.obs[self.sample_key].unique().tolist()
@@ -558,22 +527,23 @@ class SpatialAnalysis:
             else sample_subset
         )
 
-        for sample in sample_names:
-            sc.pl.spatial(
-                self.adata[self.adata.obs[self.sample_key] == sample],
-                spot_size=40,
-                color=[
-                    self.label_key,
-                    "leiden_" + self.z1_reference,
-                    "leiden_" + self.z2_comparison,
-                ],
-                ncols=3,
-                frameon=False,
-                title=[
-                    sample + "_" + self.label_key,
-                    "leiden_" + self.z1_reference,
-                    "leiden_" + self.z2_comparison,
-                ],
-            )
+        if plot:
+            for sample in sample_names:
+                sc.pl.spatial(
+                    self.adata[self.adata.obs[self.sample_key] == sample],
+                    spot_size=40,
+                    color=[
+                        self.label_key,
+                        leiden_key_reference,
+                        leiden_key_comparison,
+                    ],
+                    ncols=3,
+                    frameon=False,
+                    title=[
+                        sample + "_" + self.label_key,
+                        leiden_key_reference,
+                        leiden_key_comparison,
+                    ],
+                )
 
         return None
