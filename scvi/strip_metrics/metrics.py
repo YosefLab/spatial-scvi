@@ -142,7 +142,7 @@ class _METRIC_TITLE(NamedTuple):
     LATENT_OVERLAP_KEY: str = "Jaccard index"
 
 
-SET_OF_METRICS = ["distance", "similarity", "latent_overlap"]
+SET_OF_METRICS = ["distance", "similarity", "latent_overlap", "cluster_stats"]
 KEYS_SPATIAL = _KEYS_SPATIAL()
 METRIC_TITLE = _METRIC_TITLE()
 
@@ -220,9 +220,10 @@ class SpatialAnalysis:
         latent_indexes_dict = {}
 
         # Loop over latent spaces:
-        for latent_space_key in tqdm(
-            self.latent_space_keys, desc=latent_space_key, colour="green"
-        ):
+        # for latent_space_key in tqdm(
+        #     self.latent_space_keys, desc="latent", colour="green"
+        # ):
+        for latent_space_key in self.latent_space_keys:
             latent_and_phys_corr = []
             neighborhood_similarity = []
 
@@ -230,7 +231,7 @@ class SpatialAnalysis:
                 latent_indexes_dict[latent_space_key] = []
 
             # Loop over fovs:
-            for fov in tqdm(fov_names, desc=fov, colour="blue"):
+            for fov in tqdm(fov_names, desc=latent_space_key, colour="blue"):
                 adata_fov = self.adata[self.adata.obs[self.sample_key] == fov].copy()
                 n_cells = len(adata_fov)
 
@@ -322,6 +323,11 @@ class SpatialAnalysis:
                     + latent_space_key
                     + "."
                 )
+
+        if "cluster_stats" in set_of_metrics:
+            leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
+            leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
+
 
         if "latent_overlap" in set_of_metrics:
             # check if latent_indexes_dict is empty

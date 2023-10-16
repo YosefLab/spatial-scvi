@@ -261,6 +261,11 @@ class nicheSCVI(
         niche_composition_key: Optional[str] = None,
         niche_indexes_key: Optional[str] = None,
         niche_distances_key: Optional[str] = None,
+        ###########
+        niche_type_key: Optional[str] = None,
+        niche_treshold: float = 0.2,
+        cell_type_for_niches: list[str] = None,
+        ###########
         label_key: Optional[str] = None,
         sample_key: Optional[str] = None,
         cell_coordinates_key: Optional[str] = None,
@@ -269,8 +274,6 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         latent_mean_niche_keys: Optional[list] = None,
         latent_var_niche_keys: Optional[str] = None,
-        latent_mean_ct_prior: Optional[str] = None,
-        latent_var_ct_prior: Optional[str] = None,
     ):
         adata.obsm[niche_indexes_key] = np.zeros(
             (adata.n_obs, k_nn)
@@ -282,7 +285,6 @@ class nicheSCVI(
         adata.obsm[niche_composition_key] = np.zeros(
             (adata.n_obs, n_cell_types)
         )  # for each cell, store the composition of its neighborhood as a convex vector of cell type proportions
-        # adata.obs[cell_index_key] = adata.obs.reset_index().index.astype(int)
 
         get_niche_indexes(
             adata=adata,
@@ -300,6 +302,14 @@ class nicheSCVI(
             niche_composition_key=niche_composition_key,
         )
 
+        get_cell_niches(
+            adata=adata,
+            cell_types_to_include=cell_type_for_niches,
+            treshold=niche_treshold,
+            niche_type_key=niche_type_key,
+            niche_composition_key=niche_composition_key,
+        )
+
         get_average_latent_per_celltype(
             adata=adata,
             labels_key=label_key,
@@ -309,15 +319,6 @@ class nicheSCVI(
             latent_mean_ct_keys=latent_mean_niche_keys,
             latent_var_ct_keys=latent_var_niche_keys,
         )
-
-        # get_cell_type_priors(
-        #     adata=adata,
-        #     labels_key=label_key,
-        #     latent_mean_key=latent_mean_key,
-        #     latent_var_key=latent_var_key,
-        #     latent_mean_ct_prior=latent_mean_ct_prior,
-        #     latent_var_ct_prior=latent_var_ct_prior,
-        # )
 
         return None
 
@@ -590,6 +591,30 @@ def get_neighborhood_composition(
     return None
 
 
+def get_cell_niches(
+    adata: AnnData,
+    cell_types_to_include: list[str],
+    treshold: float = 0.2,
+    niche_type_key: str = "niche_type",
+    niche_composition_key: str = "niche_composition",
+):
+    composition_subet = adata.obsm[niche_composition_key][cell_types_to_include]
+
+    # for each cell, get the cell type with the highest proportion in its neighborhood
+
+    max_ct = composition_subet.max(axis=1)
+
+    # Create a new column with the name of the column containing the maximum value for each row
+    composition_subet["niche_assignment"] = composition_subet.idxmax(axis=1)
+
+    # Set 'max_column' to 'unknown' for rows where the maximum value is less than the threshold
+    composition_subet.loc[max_ct < treshold, "niche_assignment"] = "unknown"
+
+    adata.obs[niche_type_key] = composition_subet["niche_assignment"]
+
+    return None
+
+
 def get_average_latent_per_celltype(
     adata: AnnData,
     labels_key: str,
@@ -674,43 +699,6 @@ def get_average_latent_per_celltype(
         print("Saved qz1_m_niche_ct and qz1_var_niche_ct in adata.obsm")
 
     return None
-
-
-# def get_cell_type_priors(
-#     adata: AnnData,
-#     labels_key: str,
-#     latent_mean_key: str,
-#     latent_var_key: str,
-#     latent_mean_ct_prior: str,
-#     latent_var_ct_prior: str,
-# ):
-#     for latent_key, latent_prior_key in zip(
-#         [latent_mean_key, latent_var_key], [latent_mean_ct_prior, latent_var_ct_prior]
-#     ):
-#         obsm_df = pd.DataFrame(adata.obsm[latent_key])
-
-#         # Add the categorical column from adata.obs to the DataFrame
-#         obsm_df["category"] = adata.obs[labels_key].values
-
-#         # Group by the categorical column and calculate the mean for each group
-#         averages_by_category = obsm_df.groupby("category").mean()
-
-#         averages_by_category = obsm_df.groupby("category").mean()
-
-#         averages_by_category_dict = averages_by_category.T.to_dict(orient="list")
-
-#         # Initialize the adata.obsm['cell_type_priors'] array
-#         # n_latent_z1 = obsm_df.shape[1]  # Assuming 'A' has the same dimensionality
-#         # adata.obsm[latent_mean_ct_prior] = np.zeros((adata.n_obs, n_latent_z1))
-
-#         # Assign the averages using advanced indexing
-#         adata.obsm[latent_prior_key] = np.array(
-#             [averages_by_category_dict[category] for category in adata.obs[labels_key]]
-#         )
-
-#         print(f"Saved {latent_prior_key} in adata.obsm")
-
-#     return None
 
 
 def get_cell_type_priors(
