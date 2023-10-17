@@ -22,6 +22,8 @@ from scvi.nearest_neighbors import pynndescent
 import pingouin as pg
 from scipy.stats import mannwhitneyu, ks_2samp
 
+from dataclasses import dataclass
+
 
 def get_values_row(indices, indptr, i):
     """
@@ -129,6 +131,12 @@ def compute_k_nn(
     return latent_k_nn_indices
 
 
+@dataclass
+class ClusterStats:
+    mean: pd.DataFrame
+    std: pd.DataFrame
+
+
 class _KEYS_SPATIAL(NamedTuple):
     DISTANCE_KEY: str = "latent_and_phys_corr_"
     SIMILARITY_KEY: str = "neighborhood_similarity_"
@@ -170,6 +178,8 @@ class SpatialAnalysis:
 
         self.z1_reference = z1_reference
         self.z2_comparison = z2_comparison
+
+        self.leiden_keys = None
 
         self.color_plots = [
             "red",
@@ -325,9 +335,32 @@ class SpatialAnalysis:
                 )
 
         if "cluster_stats" in set_of_metrics:
-            leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
-            leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
+            if self.leiden_keys is None:
+                raise ValueError(
+                    "Please run the method leiden_clusters before running cluster_stats."
+                )
 
+            ct = self.adata.obsm[self.ct_composition_key]
+
+            self.cluster_stats = {}
+
+            for leiden_key in self.leiden_keys:
+                leiden_clusters = self.adata.obs[
+                    KEYS_SPATIAL.CLUSTER_KEY + leiden_key
+                ].unique()
+
+                df_mean = pd.DataFrame(columns=ct.columns, index=leiden_clusters)
+                df_std = pd.DataFrame(columns=ct.columns, index=leiden_clusters)
+
+                for cluster in leiden_clusters:
+                    ct_cluster = ct[
+                        self.adata.obs[KEYS_SPATIAL.CLUSTER_KEY + leiden_key] == cluster
+                    ]
+
+                    df_mean.loc[cluster] = ct_cluster.mean(axis=0)
+                    df_std.loc[cluster] = ct_cluster.std(axis=0)
+
+                self.cluster_stats[leiden_key] = ClusterStats(df_mean, df_std)
 
         if "latent_overlap" in set_of_metrics:
             # check if latent_indexes_dict is empty
@@ -492,7 +525,7 @@ class SpatialAnalysis:
     def leiden_clusters(
         self,
         resolution: float = 0.5,
-        leiden_key_reference: Optional[str] = None,
+        leiden_keys: Optional[str] = None,
         sample_subset: Optional[list[str]] = None,
         plot: bool = True,
     ):
@@ -507,25 +540,37 @@ class SpatialAnalysis:
             The subset of samples to consider in the spatial analysis.
         """
 
-        leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
+        if leiden_keys is None:
+            leiden_keys = self.latent_space_keys
 
-        if leiden_key_reference not in self.adata.obs.columns:
-            leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
-            sc.pp.neighbors(self.adata, use_rep=self.z1_reference)
-            sc.tl.leiden(self.adata, resolution, key_added=leiden_key_reference)
+        self.leiden_keys = leiden_keys
 
-            rprint(
-                "Saved leiden clusters for reference latent space in "
-                + leiden_key_reference
-            )
+        for key in tqdm(leiden_keys, desc="Leiden", colour="green"):
+            if key not in self.adata.obs.columns:
+                sc.pp.neighbors(self.adata, use_rep=key)
+                key_to_add = KEYS_SPATIAL.CLUSTER_KEY + key
+                sc.tl.leiden(self.adata, resolution, key_added=key_to_add)
+                rprint("Saved leiden clusters in " + key_to_add)
 
-        sc.pp.neighbors(self.adata, use_rep=self.z2_comparison)
-        sc.tl.leiden(self.adata, resolution, key_added=leiden_key_comparison)
+        # leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
 
-        rprint(
-            "Saved leiden clusters for 'spatial' latent space in  "
-            + leiden_key_comparison
-        )
+        # if leiden_key_reference not in self.adata.obs.columns:
+        #     leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
+        #     sc.pp.neighbors(self.adata, use_rep=self.z1_reference)
+        #     sc.tl.leiden(self.adata, resolution, key_added=leiden_key_reference)
+
+        #     rprint(
+        #         "Saved leiden clusters for reference latent space in "
+        #         + leiden_key_reference
+        #     )
+
+        # sc.pp.neighbors(self.adata, use_rep=self.z2_comparison)
+        # sc.tl.leiden(self.adata, resolution, key_added=leiden_key_comparison)
+
+        # rprint(
+        #     "Saved leiden clusters for 'spatial' latent space in  "
+        #     + leiden_key_comparison
+        # )
 
         sample_names = (
             self.adata.obs[self.sample_key].unique().tolist()
@@ -540,15 +585,15 @@ class SpatialAnalysis:
                     spot_size=40,
                     color=[
                         self.label_key,
-                        leiden_key_reference,
-                        leiden_key_comparison,
+                        leiden_keys[0],
+                        leiden_keys[1],
                     ],
                     ncols=3,
                     frameon=False,
                     title=[
                         sample + "_" + self.label_key,
-                        leiden_key_reference,
-                        leiden_key_comparison,
+                        leiden_keys[0],
+                        leiden_keys[1],
                     ],
                 )
 
