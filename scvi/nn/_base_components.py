@@ -549,6 +549,44 @@ class Decoder(nn.Module):
         return p_m, p_v
 
 
+class CompoDecoder(Decoder):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        transform: Literal["log_softmax", "log_compo", "none"] = "none",
+        temperature: float = 1,
+        **kwargs,
+    ):
+        super().__init__(
+            n_input=n_input,
+            n_output=n_output,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            **kwargs,
+        )
+
+        self.transform = transform
+        self.temperature = temperature
+
+    def forward(self, x: torch.Tensor, *cat_list: int, eps: float = 1e-6):
+        p = self.decoder(x, *cat_list)
+        p_m = self.mean_decoder(p)
+        if self.transform == "none":
+            pass
+        if self.transform == "log_softmax":
+            p_m = torch.log_softmax(p_m / self.temperature, dim=1)
+        if self.transform == "log_compo":
+            p_m = nn.Softplus()(p_m)
+            prob_compo = p_m / p_m.sum(dim=1)
+            p_m = torch.log(prob_compo + eps)
+        return p_m
+
+
 class NicheDecoder(nn.Module):
     """Decodes data from latent space to LATENT NICHE space.
 

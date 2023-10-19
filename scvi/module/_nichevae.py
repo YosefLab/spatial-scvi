@@ -21,6 +21,7 @@ from scvi.nn import (
     one_hot,
     Decoder,
     NicheDecoder,
+    CompoDecoder,
 )
 
 torch.backends.cudnn.benchmark = True
@@ -113,14 +114,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             "cell_type", "knn", "knn_unweighted", "ct_unweighted"
         ] = "cell_type",
         niche_combination: Literal["aggregate", "mixture"] = "mixture",
-        # z1_mean: Optional[torch.Tensor] = None,
-        # z1_var: Optional[torch.Tensor] = None,
-        composition_activation: Literal[
-            "softmax", "exp"
-        ] = "softmax",  # TODO think about other ways to transform the logits
         rec_weight: float = 1.0,
         niche_compo_weight: float = 1.0,
         niche_kl_weight: float = 1.0,
+        compo_transform: Literal["log_softmax", "log_compo", "none"] = "none",
+        compo_temperature: float = 1.0,
         ###########
         n_batch: int = 0,
         n_labels: int = 0,
@@ -157,14 +155,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         self.rec_weight = rec_weight
         self.niche_kl_weight = niche_kl_weight
         self.niche_compo_weight = niche_compo_weight
-        self.composition_activation = composition_activation
         self.n_cats_per_cov = n_cats_per_cov
-        # self.z1_mean = torch.tensor(z1_mean)
-        # self.z1_var = torch.tensor(z1_var)
         self.niche_components = niche_components
         self.niche_combination = niche_combination
-        # self.niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
-        # self.niche_size = self.niche_indexes.shape[1]
+        self.compo_transform = compo_transform
+        self.compo_temperature = compo_temperature
 
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -282,7 +277,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_decoder_kwargs,
         )
 
-        self.composition_decoder = Decoder(
+        self.composition_decoder = CompoDecoder(
             n_input_decoder,
             n_cell_types,
             # n_cat_list=cat_list,
@@ -290,6 +285,8 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_layers=n_layers_compo,
             n_hidden=n_hidden,
             # inject_covariates=deeply_inject_covariates,
+            transform=compo_transform,
+            temperature=compo_temperature,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
             **_extra_decoder_kwargs,
@@ -524,7 +521,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         niche_mean, niche_variance = self.niche_decoder(
             decoder_input, batch_index, *categorical_input
         )  # or y, Idk.
-        niche_composition, _ = self.composition_decoder(
+        niche_composition = self.composition_decoder(
             decoder_input, batch_index, *categorical_input
         )
 
@@ -642,9 +639,13 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
         reconstructed_niche_composition = generative_outputs["niche_composition"]
 
-        composition_loss = F.cross_entropy(
-            input=reconstructed_niche_composition, target=true_niche_composition
-        )
+        if self.compo_transform == "none":
+            input_temperature = reconstructed_niche_composition / self.compo_temperature
+            composition_loss = F.cross_entropy(
+                input=input_temperature, target=true_niche_composition
+            )
+
+        # else, you are given a log_probs and you have to use another loss function like KLDiv. TODO
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1

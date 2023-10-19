@@ -183,6 +183,8 @@ def test_nichevi():
         gene_likelihood=LIKELIHOOD,
         n_layers=N_LAYERS,
         n_latent=N_LATENT,
+        compo_transform="none",
+        compo_temperature=1,
         use_batch_norm="both",
         use_layer_norm="none",
     )
