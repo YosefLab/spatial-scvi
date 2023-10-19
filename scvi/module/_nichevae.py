@@ -547,17 +547,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        # z1_mean = self.z1_mean.to(
-        #     x.device
-        # )  # TODO remove this dirty coding. For now, you load the full latent space matrix
-        # z1_var = self.z1_var.to(x.device)
-
-        # cell_indexes = tensors[REGISTRY_KEYS.INDICES_KEY].type(torch.int64).squeeze()
-
-        # niche_indexes = tensors[REGISTRY_KEYS.NICHE_INDEXES_KEY]
-        # # change niche_indexes type to be int:
-        # niche_indexes = niche_indexes.type(torch.int64)
-
         niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY].unsqueeze(-1)
         niche_weights_distances = tensors[REGISTRY_KEYS.NICHE_DISTANCES_KEY].unsqueeze(
             -1
@@ -581,14 +570,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         n_cell_types = niche_weights_ct.size(dim=-1)
 
         # NICHE OBSERVED DISTRIBUTION-------------------------------------------------------------------------------
-
-        # z1_mean_niche  = cells x cell_types x latent OR cells x (latent+1)
-        # z1_mean_niche = z1_mean[
-        #     cell_indexes
-        # ]  # subset of z1_mean to the cells in the batch - then why not putting it into tensors ?
-        # z1_var_niche = z1_var[
-        #     cell_indexes
-        # ]  # subset of z1_var to the cells in the batch
 
         z1_mean_niche = tensors[
             REGISTRY_KEYS.Z1_MEAN_CT_KEY

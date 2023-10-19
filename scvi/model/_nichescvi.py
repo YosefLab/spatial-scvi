@@ -593,24 +593,28 @@ def get_neighborhood_composition(
 
 def get_cell_niches(
     adata: AnnData,
-    cell_types_to_include: list[str],
+    cell_types_to_include: Optional[list[str]] = None,
     treshold: float = 0.2,
     niche_type_key: str = "niche_type",
     niche_composition_key: str = "niche_composition",
 ):
-    composition_subet = adata.obsm[niche_composition_key][cell_types_to_include]
+    if cell_types_to_include is None:
+        pass
 
-    # for each cell, get the cell type with the highest proportion in its neighborhood
+    else:
+        composition_subet = adata.obsm[niche_composition_key][cell_types_to_include]
 
-    max_ct = composition_subet.max(axis=1)
+        # for each cell, get the cell type with the highest proportion in its neighborhood
 
-    # Create a new column with the name of the column containing the maximum value for each row
-    composition_subet["niche_assignment"] = composition_subet.idxmax(axis=1)
+        max_ct = composition_subet.max(axis=1)
 
-    # Set 'max_column' to 'unknown' for rows where the maximum value is less than the threshold
-    composition_subet.loc[max_ct < treshold, "niche_assignment"] = "unknown"
+        # Create a new column with the name of the column containing the maximum value for each row
+        composition_subet["niche_assignment"] = composition_subet.idxmax(axis=1)
 
-    adata.obs[niche_type_key] = composition_subet["niche_assignment"]
+        # Set 'max_column' to 'unknown' for rows where the maximum value is less than the threshold
+        composition_subet.loc[max_ct < treshold, "niche_assignment"] = "unknown"
+
+        adata.obs[niche_type_key] = composition_subet["niche_assignment"]
 
     return None
 

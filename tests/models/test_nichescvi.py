@@ -175,8 +175,6 @@ def test_nichevi():
 
     vae = nicheSCVI(
         adata,
-        # z1_mean=setup_dict["z1_mean"],
-        # z1_var=setup_dict["z1_var"],
         rec_weight=setup_dict["rec_weight"],
         niche_kl_weight=setup_dict["niche_kl_weight"],
         niche_compo_weight=setup_dict["niche_compo_weight"],
