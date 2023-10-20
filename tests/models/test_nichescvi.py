@@ -191,10 +191,11 @@ def test_nichevi():
 
     vae.train(1)
     print("I am here")
-    vae.train(3)
+    vae.train(plan_kwargs=dict(lr=1e-3, optimizer="Adam"))
     vae.get_elbo(indices=vae.validation_indices)
     vae.get_normalized_expression()
     vae.get_latent_representation()
+    vae.predict_neighborhood()  # specific to nicheSCVI
     print("Finished training")
     vae.differential_expression(groupby="labels", group1="label_1")
     vae.differential_expression(groupby="labels", group1="label_1", group2="label_2")

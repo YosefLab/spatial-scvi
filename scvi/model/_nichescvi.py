@@ -182,79 +182,46 @@ class nicheSCVI(
         )
         self.init_params_ = self._get_init_params(locals())
 
+    @torch.inference_mode()
     def predict_neighborhood(
         self,
         adata: Optional[AnnData] = None,
         indices: Optional[Sequence[int]] = None,
         batch_size: Optional[int] = None,
-        n_samples: int = 1,
-        softmax: bool = False,
-        sigmoid: bool = False,
     ):
-        """
-        Predict the CTs in the neighborhood of each cell.
-
-        Parameters
-        ----------
-        adata
-            AnnData object with equivalent structure to initial AnnData. If `None`, defaults to the
-            AnnData object used to initialize the model.
-        indices
-            Indices of cells in adata
-
-        """
+        self._check_if_trained(warn=False)
 
         adata = self._validate_anndata(adata)
-        self._check_if_trained()
         scdl = self._make_data_loader(
-            adata=adata,
-            indices=indices,
-            batch_size=batch_size,
+            adata=adata, indices=indices, batch_size=batch_size
         )
 
-        ct_pred = []
+        ct_prediction = []
         for tensors in scdl:
-            x = tensors[REGISTRY_KEYS.X_KEY]
-            batch = tensors[REGISTRY_KEYS.BATCH_KEY]
+            inference_inputs = self.module._get_inference_input(tensors)
+            outputs = self.module.inference(**inference_inputs)
 
-            cont_key = REGISTRY_KEYS.CONT_COVS_KEY
-            cont_covs = tensors[cont_key] if cont_key in tensors.keys() else None
+            decoder_input = outputs["qz"].loc
 
-            cat_key = REGISTRY_KEYS.CAT_COVS_KEY
-            cat_covs = tensors[cat_key] if cat_key in tensors.keys() else None
+            predicted_ct = self.module.composition_decoder(
+                decoder_input
+            )  # no batch correction here
 
-            inference_output = self.module._regular_inference(
-                x=x,
-                batch_index=batch,
-                cont_covs=cont_covs,
-                cat_covs=cat_covs,
-                n_samples=1,
-            )
+            if self.module.compo_transform == "none":
+                predicted_ct_temperature = predicted_ct / self.module.compo_temperature
+                predicted_ct_prob = F.softmax(predicted_ct_temperature, dim=-1)
 
-            generative_inputs = self.module._get_generative_input(
-                tensors, inference_output
-            )
+            elif self.module.compo_transform == "log_softmax":
+                predicted_ct_prob = torch.exp(predicted_ct)
+            elif self.module.compo_transform == "log_compo":
+                predicted_ct_prob = torch.exp(predicted_ct)
+            # TODO maybe replace elif by else? meaning either you provide
+            # raw logits and you softmax it or you provide log_probas from
+            # the definition of the model and you just exponentiate it.
 
-            decoder_input = inference_output["qz"].loc
+            ct_prediction.append(predicted_ct_prob.detach().cpu())
 
-            predicted_ct, _ = self.module.cell_type_decoder(decoder_input)
-
-            if predicted_ct.shape[1] > 1 and sigmoid:
-                RaiseError("Sigmoid is not supported for multi-class classification")
-
-            if sigmoid and softmax:
-                RaiseError("Sigmoid and softmax cannot be used together")
-
-            if softmax:
-                predicted_ct = F.softmax(predicted_ct, dim=-1)
-            if sigmoid:
-                predicted_ct = torch.sigmoid(predicted_ct)
-
-            ct_pred.append(predicted_ct.detach().cpu())
-
-        ct_pred = torch.cat(ct_pred).numpy()
-
-        return ct_pred
+        return torch.cat(ct_prediction).numpy()
 
     def preprocessing_anndata(
         adata: AnnData,

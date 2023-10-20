@@ -520,7 +520,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         niche_mean, niche_variance = self.niche_decoder(
             decoder_input, batch_index, *categorical_input
-        )  # or y, Idk.
+        )  
         niche_composition = self.composition_decoder(
             decoder_input, batch_index, *categorical_input
         )

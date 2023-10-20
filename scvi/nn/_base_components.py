@@ -579,10 +579,10 @@ class CompoDecoder(Decoder):
         if self.transform == "none":
             pass
         if self.transform == "log_softmax":
-            p_m = torch.log_softmax(p_m / self.temperature, dim=1)
+            p_m = torch.log_softmax(p_m / self.temperature, dim=-1)
         if self.transform == "log_compo":
             p_m = nn.Softplus()(p_m)
-            prob_compo = p_m / p_m.sum(dim=1)
+            prob_compo = p_m / p_m.sum(dim=-1)
             p_m = torch.log(prob_compo + eps)
         return p_m
 
