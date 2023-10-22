@@ -114,9 +114,11 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             "cell_type", "knn", "knn_unweighted", "ct_unweighted"
         ] = "cell_type",
         niche_combination: Literal["aggregate", "mixture"] = "mixture",
+        ###########
         rec_weight: float = 1.0,
         niche_compo_weight: float = 1.0,
         niche_kl_weight: float = 1.0,
+        ###########
         compo_transform: Literal["log_softmax", "log_compo", "none"] = "none",
         compo_temperature: float = 1.0,
         ###########
@@ -131,6 +133,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         ###########
         n_continuous_cov: int = 0,
         n_cats_per_cov: Optional[Iterable[int]] = None,
+        ###########
         dropout_rate: Tunable[float] = 0.1,
         dispersion: Tunable[
             Literal["gene", "gene-batch", "gene-label", "gene-cell"]
@@ -520,7 +523,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         niche_mean, niche_variance = self.niche_decoder(
             decoder_input, batch_index, *categorical_input
-        )  
+        )
         niche_composition = self.composition_decoder(
             decoder_input, batch_index, *categorical_input
         )

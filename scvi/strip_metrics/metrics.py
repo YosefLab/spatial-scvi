@@ -20,7 +20,7 @@ from sklearn.neighbors import NearestNeighbors, kneighbors_graph
 from scvi.nearest_neighbors import pynndescent
 
 import pingouin as pg
-from scipy.stats import mannwhitneyu, ks_2samp
+from scipy.stats import mannwhitneyu, ks_2samp, entropy
 
 from dataclasses import dataclass
 
@@ -552,26 +552,6 @@ class SpatialAnalysis:
                 sc.tl.leiden(self.adata, resolution, key_added=key_to_add)
                 rprint("Saved leiden clusters in " + key_to_add)
 
-        # leiden_key_comparison = KEYS_SPATIAL.CLUSTER_KEY + self.z2_comparison
-
-        # if leiden_key_reference not in self.adata.obs.columns:
-        #     leiden_key_reference = KEYS_SPATIAL.CLUSTER_KEY + self.z1_reference
-        #     sc.pp.neighbors(self.adata, use_rep=self.z1_reference)
-        #     sc.tl.leiden(self.adata, resolution, key_added=leiden_key_reference)
-
-        #     rprint(
-        #         "Saved leiden clusters for reference latent space in "
-        #         + leiden_key_reference
-        #     )
-
-        # sc.pp.neighbors(self.adata, use_rep=self.z2_comparison)
-        # sc.tl.leiden(self.adata, resolution, key_added=leiden_key_comparison)
-
-        # rprint(
-        #     "Saved leiden clusters for 'spatial' latent space in  "
-        #     + leiden_key_comparison
-        # )
-
         sample_names = (
             self.adata.obs[self.sample_key].unique().tolist()
             if not sample_subset
@@ -598,3 +578,38 @@ class SpatialAnalysis:
                 )
 
         return None
+
+    def compare_neighborhoods(
+        self,
+        comparison_keys: str,
+        reference_key: Optional[str] = None,
+        save_metric_key: str = "entropy_",
+    ):
+        if reference_key is None:
+            reference_key = self.ct_composition_key
+
+        neighborhood_ref = self.adata.obsm[reference_key]
+
+        for key in comparison_keys:
+            neighborhood_pred = pd.DataFrame(
+                self.adata.obsm[key], columns=neighborhood_ref.columns
+            )
+            # then loop over cell types:
+            entropy_dict = {}
+            for ct in neighborhood_ref.columns:
+                # compute the entropy for each cell type:
+                true_neighbors_ct = neighborhood_ref[ct]
+                pred_neighbors_ct = neighborhood_pred[ct]
+                entropy_ct = [
+                    entropy(
+                        true_neighbors_ct[self.adata.obs.cell_type == i],
+                        pred_neighbors_ct[self.adata.obs.cell_type == i],
+                    )
+                    for i in neighborhood_ref.columns
+                ]
+                entropy_dict[ct] = entropy_ct
+            self.adata.obsm[save_metric_key + key] = pd.DataFrame(
+                entropy_dict,
+                columns=neighborhood_ref.columns,
+                index=neighborhood_ref.columns,
+            )
