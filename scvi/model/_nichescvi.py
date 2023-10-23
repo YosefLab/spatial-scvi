@@ -32,6 +32,8 @@ from scvi.utils import setup_anndata_dsp
 
 from .base import ArchesMixin, BaseMinifiedModeModelClass, RNASeqMixin, VAEMixin
 
+from rich import print
+
 _SCVI_LATENT_QZM = "_scvi_latent_qzm"
 _SCVI_LATENT_QZV = "_scvi_latent_qzv"
 _SCVI_OBSERVED_LIB_SIZE = "_scvi_observed_lib_size"
@@ -506,7 +508,9 @@ def get_niche_indexes(
             :, 1:
         ]
 
-    print("Saved niche_indexes and niche_distances in adata.obsm")
+    print(
+        "[bold cyan]Saved niche_indexes and niche_distances in adata.obsm[/bold cyan]"
+    )
 
     return None
 
@@ -553,7 +557,7 @@ def get_neighborhood_composition(
 
     adata.obsm[niche_composition_key] = neighborhood_composition_df
 
-    print("Saved niche_composition in adata.obsm")
+    print("[bold green]Saved niche_composition in adata.obsm[/bold green]")
 
     return None
 
@@ -609,7 +613,9 @@ def get_average_latent_per_celltype(
         adata.obsm["qz1_m_niche_knn"] = z1_mean_niches
         adata.obsm["qz1_var_niche_knn"] = z1_var_niches
 
-        print("Saved qz1_m_niche_knn and qz1_var_niche_knn in adata.obsm")
+        print(
+            "[bold green]Saved qz1_m_niche_knn and qz1_var_niche_knn in adata.obsm[/bold green]"
+        )
 
     if "qz1_m_niche_ct" in latent_mean_ct_keys:
         cell_types = adata.obs[labels_key].unique().tolist()
@@ -667,7 +673,9 @@ def get_average_latent_per_celltype(
         adata.obsm["qz1_m_niche_ct"] = z1_mean_niches_ct
         adata.obsm["qz1_var_niche_ct"] = z1_var_niches_ct
 
-        print("Saved qz1_m_niche_ct and qz1_var_niche_ct in adata.obsm")
+        print(
+            "[bold green]Saved qz1_m_niche_ct and qz1_var_niche_ct in adata.obsm[/bold green]"
+        )
 
     return None
 

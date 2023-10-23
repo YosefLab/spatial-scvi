@@ -194,6 +194,68 @@ class SpatialAnalysis:
             "cyan",
         ]
 
+    def leiden_clusters(
+        self,
+        resolution: float = 0.5,
+        leiden_keys: Optional[str] = None,
+        sample_subset: Optional[list[str]] = None,
+        plot: bool = True,
+    ):
+        """
+        Show the clusters in the spatial coordinates.
+
+        Parameters
+        ----------
+        resolution
+            The resolution for the clustering.
+        sample_subset
+            The subset of samples to consider in the spatial analysis.
+        """
+
+        if leiden_keys is None:
+            leiden_keys = self.latent_space_keys
+
+        self.leiden_keys = leiden_keys
+
+        keys_added = []
+
+        for key in tqdm(leiden_keys, desc="Leiden", colour="green"):
+            if key not in self.adata.obs.columns:
+                sc.pp.neighbors(self.adata, use_rep=key)
+                key_to_add = KEYS_SPATIAL.CLUSTER_KEY + key
+                sc.tl.leiden(self.adata, resolution, key_added=key_to_add)
+                # rprint("Saved leiden clusters in " + key_to_add)
+                keys_added.append(key_to_add)
+
+        sample_names = (
+            self.adata.obs[self.sample_key].unique().tolist()
+            if not sample_subset
+            else sample_subset
+        )
+
+        rprint("Leiden clusters saved in: ", keys_added)
+
+        if plot:
+            for sample in sample_names:
+                sc.pl.spatial(
+                    self.adata[self.adata.obs[self.sample_key] == sample],
+                    spot_size=40,
+                    color=[
+                        self.label_key,
+                        leiden_keys[0],
+                        leiden_keys[1],
+                    ],
+                    ncols=3,
+                    frameon=False,
+                    title=[
+                        sample + "_" + self.label_key,
+                        leiden_keys[0],
+                        leiden_keys[1],
+                    ],
+                )
+
+        return None
+
     def compute_metrics(
         self,
         k_nn: int,
@@ -230,9 +292,6 @@ class SpatialAnalysis:
         latent_indexes_dict = {}
 
         # Loop over latent spaces:
-        # for latent_space_key in tqdm(
-        #     self.latent_space_keys, desc="latent", colour="green"
-        # ):
         for latent_space_key in self.latent_space_keys:
             latent_and_phys_corr = []
             neighborhood_similarity = []
@@ -260,7 +319,7 @@ class SpatialAnalysis:
                     )
 
                 if "distance" in set_of_metrics:
-                    xy = adata_fov.obsm[self.spatial_coord_key].values
+                    xy = adata_fov.obsm[self.spatial_coord_key]  # .values
 
                     spatial_coord_of_latent_neighbors_fov = xy[
                         cells_in_the_latent_neighborhood
@@ -318,21 +377,21 @@ class SpatialAnalysis:
                 self.adata.obs[
                     KEYS_SPATIAL.DISTANCE_KEY + latent_space_key
                 ] = np.concatenate(latent_and_phys_corr)
-                rprint(
-                    "Saved latent and physical correlation in the adata.obs column latent_and_phys_corr_"
-                    + latent_space_key
-                    + "."
-                )
+                # rprint(
+                #     "Saved latent and physical correlation in the adata.obs column latent_and_phys_corr_"
+                #     + latent_space_key
+                #     + "."
+                # )
 
             if "similarity" in set_of_metrics:
                 self.adata.obs[
                     KEYS_SPATIAL.SIMILARITY_KEY + latent_space_key
                 ] = np.concatenate(neighborhood_similarity)
-                rprint(
-                    "Saved compositional neighborhood similarity in the adata.obs column neighborhood_similarity_"
-                    + latent_space_key
-                    + "."
-                )
+                # rprint(
+                #     "Saved compositional neighborhood similarity in the adata.obs column neighborhood_similarity_"
+                #     + latent_space_key
+                #     + "."
+                # )
 
         if "cluster_stats" in set_of_metrics:
             if self.leiden_keys is None:
@@ -360,7 +419,9 @@ class SpatialAnalysis:
                     df_mean.loc[cluster] = ct_cluster.mean(axis=0)
                     df_std.loc[cluster] = ct_cluster.std(axis=0)
 
-                self.cluster_stats[leiden_key] = ClusterStats(df_mean, df_std)
+                self.cluster_stats[leiden_key] = ClusterStats(
+                    df_mean.sort_index(), df_std.sort_index()
+                )
 
         if "latent_overlap" in set_of_metrics:
             # check if latent_indexes_dict is empty
@@ -519,63 +580,6 @@ class SpatialAnalysis:
 
         # Print the table
         console.print(table)
-
-        return None
-
-    def leiden_clusters(
-        self,
-        resolution: float = 0.5,
-        leiden_keys: Optional[str] = None,
-        sample_subset: Optional[list[str]] = None,
-        plot: bool = True,
-    ):
-        """
-        Show the clusters in the spatial coordinates.
-
-        Parameters
-        ----------
-        resolution
-            The resolution for the clustering.
-        sample_subset
-            The subset of samples to consider in the spatial analysis.
-        """
-
-        if leiden_keys is None:
-            leiden_keys = self.latent_space_keys
-
-        self.leiden_keys = leiden_keys
-
-        for key in tqdm(leiden_keys, desc="Leiden", colour="green"):
-            if key not in self.adata.obs.columns:
-                sc.pp.neighbors(self.adata, use_rep=key)
-                key_to_add = KEYS_SPATIAL.CLUSTER_KEY + key
-                sc.tl.leiden(self.adata, resolution, key_added=key_to_add)
-                rprint("Saved leiden clusters in " + key_to_add)
-
-        sample_names = (
-            self.adata.obs[self.sample_key].unique().tolist()
-            if not sample_subset
-            else sample_subset
-        )
-
-        if plot:
-            for sample in sample_names:
-                sc.pl.spatial(
-                    self.adata[self.adata.obs[self.sample_key] == sample],
-                    spot_size=40,
-                    color=[
-                        self.label_key,
-                        leiden_keys[0],
-                        leiden_keys[1],
-                    ],
-                    ncols=3,
-                    frameon=False,
-                    title=[
-                        sample + "_" + self.label_key,
-                        leiden_keys[0],
-                        leiden_keys[1],
-                    ],
-                )
 
         return None
 
