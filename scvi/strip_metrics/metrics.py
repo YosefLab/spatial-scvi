@@ -20,7 +20,8 @@ from sklearn.neighbors import NearestNeighbors, kneighbors_graph
 from scvi.nearest_neighbors import pynndescent
 
 import pingouin as pg
-from scipy.stats import mannwhitneyu, ks_2samp, entropy
+from scipy.stats import mannwhitneyu, ks_2samp, entropy, pearsonr
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from dataclasses import dataclass
 
@@ -594,26 +595,49 @@ class SpatialAnalysis:
 
         neighborhood_ref = self.adata.obsm[reference_key]
 
+        proportions_ref = self.adata.obs[self.label_key].value_counts() / len(
+            self.adata
+        )
+        proportions_ref_series = pd.Series(
+            proportions_ref, index=neighborhood_ref.columns
+        )
+
         for key in comparison_keys:
             neighborhood_pred = pd.DataFrame(
-                self.adata.obsm[key], columns=neighborhood_ref.columns
+                self.adata.obsm[key],
+                columns=neighborhood_ref.columns,
+                index=self.adata.obs_names,
             )
             # then loop over cell types:
-            entropy_dict = {}
+            metric_dict = {}
             for ct in neighborhood_ref.columns:
                 # compute the entropy for each cell type:
                 true_neighbors_ct = neighborhood_ref[ct]
                 pred_neighbors_ct = neighborhood_pred[ct]
-                entropy_ct = [
-                    entropy(
+                metric_ct = [
+                    pearsonr(
                         true_neighbors_ct[self.adata.obs.cell_type == i],
                         pred_neighbors_ct[self.adata.obs.cell_type == i],
-                    )
+                    )[0]
                     for i in neighborhood_ref.columns
                 ]
-                entropy_dict[ct] = entropy_ct
-            self.adata.obsm[save_metric_key + key] = pd.DataFrame(
-                entropy_dict,
+                metric_dict[ct] = metric_ct
+
+            metric_df = pd.DataFrame(
+                metric_dict,
                 columns=neighborhood_ref.columns,
                 index=neighborhood_ref.columns,
             )
+
+            # add to df a column being the weighted average of each row by the proportion of each cell type in the dataset
+            metric_df["weighted_mean"] = metric_df.apply(
+                lambda x: np.average(x, weights=proportions_ref_series), axis=1
+            )
+            # add to df a row, each value is the weighted average of each column by the proportion of each cell type in the dataset
+            metric_df.loc["weighted_mean"] = metric_df.apply(
+                lambda x: np.average(x, weights=proportions_ref_series), axis=0
+            )
+
+            self.adata.uns[save_metric_key + key] = metric_df
+
+        return None
