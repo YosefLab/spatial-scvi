@@ -44,23 +44,26 @@ def get_values_row(indices, indptr, i):
 def compute_similarity(
     vector1: np.array,
     vectors_list: np.array,
-    measure: Literal["euclidean", "pearson", "spearman", "cosine"] = "euclidean",
+    measure: Literal["euclidean", "pearson", "spearman", "cosine", "kl"] = "euclidean",
 ) -> np.array:
-    """Compute similarity between one vector and a set of vectors.
+    """
+    Compute the similarity between one vector and one set of vectors.
 
-    Args:
-        vector1 (np.array): _description_
-        vector2 (np.array): _description_
-        measure (str): should be one of 'euclidean', 'pearson','spearman', or 'cosine'.
-
-    Raises
-    ------
-        ValueError: If the measure is not one of 'euclidean', 'pearson','spearman', or 'cosine'.
+    Parameters
+    ----------
+    vector1
+        The first vector (1D).
+    vectors_list
+        The second set of vectors (2D).
+    measure
+        The similarity measure to use.
 
     Returns
     -------
-        float: Similarity value.
+    np.array
+        The similarity between vector1 and each row of vectors_list.
     """
+
     if measure == "euclidean":
         return np.linalg.norm(vector1 - vectors_list, axis=1)
     elif measure == "pearson":
@@ -73,9 +76,12 @@ def compute_similarity(
         dot_product = np.dot(vector1, vectors_list.T)
         norms = np.linalg.norm(vector1) * np.linalg.norm(vectors_list, axis=1)
         return dot_product / norms
+
+    elif measure == "kl":
+        return kl_divergence_set(vector1, vectors_list)
     else:
         raise ValueError(
-            "Invalid similarity measure. Choose from 'euclidean', 'pearson', 'spearman', or 'cosine'."
+            "Invalid similarity measure. Please choose between 'euclidean', 'pearson', 'spearman', 'cosine' or 'kl'."
         )
 
 
@@ -89,6 +95,30 @@ def jaccard_score(neighbors1: np.array, neighbors2: np.array) -> float:
         jaccard = len(intersection) / len(union)
 
     return jaccard
+
+
+def kl_divergence_set(p: np.array, q_set: np.array, epsilon: float = 1e-7) -> np.array:
+    """
+    Compute the KL divergence between two sets of probabilities.
+
+    Parameters
+    ----------
+    p
+        The first set of probabilities (1D).
+    q_set
+        The second set of probabilities (2D).
+
+    Returns
+    -------
+    float
+        The KL divergence between p and each row of q_set.
+    """
+
+    # Add epsilon to both p and q_set
+    p += epsilon
+    q_set += epsilon
+
+    return np.sum(p * np.log(p / q_set), axis=1)
 
 
 def compute_k_nn(
@@ -147,11 +177,16 @@ class _KEYS_SPATIAL(NamedTuple):
 
 class _METRIC_TITLE(NamedTuple):
     DISTANCE_KEY: str = "distance in micron"
-    SIMILARITY_KEY: str = "correlation"
+    SIMILARITY_KEY: str = ""
     LATENT_OVERLAP_KEY: str = "Jaccard index"
 
 
-SET_OF_METRICS = ["distance", "similarity", "latent_overlap", "cluster_stats"]
+SET_OF_METRICS = [
+    "distance",
+    "similarity",
+    "latent_overlap",
+    "cluster_stats",
+]
 KEYS_SPATIAL = _KEYS_SPATIAL()
 METRIC_TITLE = _METRIC_TITLE()
 
@@ -203,14 +238,18 @@ class SpatialAnalysis:
         plot: bool = True,
     ):
         """
-        Show the clusters in the spatial coordinates.
+        Compute the leiden clusters.
 
         Parameters
         ----------
         resolution
-            The resolution for the clustering.
+            The resolution parameter of the leiden algorithm.
+        leiden_keys
+            The keys in adata.obsm that contain the latent spaces to use for the leiden clustering.
         sample_subset
-            The subset of samples to consider in the spatial analysis.
+            The subset of samples to use for plotting the leiden clustering.
+        plot
+            Whether to plot the leiden clusters.
         """
 
         if leiden_keys is None:
@@ -265,22 +304,18 @@ class SpatialAnalysis:
         reduction: list[str] = ["median", "mean"],
     ) -> None:
         """
-        Compute the metrics for the spatial analysis.
+        Compute the spatial metrics.
 
         Parameters
         ----------
-        sample_key
-            The key in adata.obs that contains the sample names.
         k_nn
             The number of neighbors to consider in the spatial analysis.
-        sample_subset
-            The subset of samples to consider in the spatial analysis.
         set_of_metrics
-            The set of metrics to compute. The options are: "distance", "similarity", "latent_overlap".
+            The set of metrics to compute.
         similarity_metric
-            The similarity metric to use. The options are: "spearman", "pearson", "jaccard".
+            The similarity metric to use.
         reduction
-            The reduction to apply to the similarity metric. The options are: "median", "mean", None.
+            The reduction method to use.
         """
 
         self.set_of_metrics = set_of_metrics
@@ -313,6 +348,9 @@ class SpatialAnalysis:
                     method="pynn",
                     n_jobs=-1,
                 )
+
+                # cell types in the neighborhood
+                ct = adata_fov.obsm[self.ct_composition_key].values
 
                 if latent_space_key in z2_versus_z1:
                     latent_indexes_dict[latent_space_key].append(
@@ -351,7 +389,6 @@ class SpatialAnalysis:
 
                 # similarity between neighborhoods------------------------------
                 if "similarity" in set_of_metrics:
-                    ct = adata_fov.obsm[self.ct_composition_key].values
                     similarity_parallel = Parallel(n_jobs=-1)(
                         delayed(compute_similarity)(
                             ct[i],
@@ -588,7 +625,7 @@ class SpatialAnalysis:
         self,
         comparison_keys: str,
         reference_key: Optional[str] = None,
-        save_metric_key: str = "entropy_",
+        save_metric_key: str = "corr_",
     ):
         if reference_key is None:
             reference_key = self.ct_composition_key
@@ -601,6 +638,8 @@ class SpatialAnalysis:
         proportions_ref_series = pd.Series(
             proportions_ref, index=neighborhood_ref.columns
         )
+
+        keys_added = []
 
         for key in comparison_keys:
             neighborhood_pred = pd.DataFrame(
@@ -639,5 +678,9 @@ class SpatialAnalysis:
             )
 
             self.adata.uns[save_metric_key + key] = metric_df
+
+            keys_added.append(save_metric_key + key)
+
+        rprint("Saved metric in: ", keys_added)
 
         return None
