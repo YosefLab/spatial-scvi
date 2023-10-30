@@ -598,12 +598,10 @@ def get_average_latent_per_celltype(
     latent_var_key: str,
     latent_mean_ct_keys: list[str] = ["qz1_m_niche_ct"],
     latent_var_ct_keys: list[str] = ["qz1_var_niche_ct"],
-    epsilon: float = 0,
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
 
     n_cells = adata.n_obs
-    n_latent_z1 = adata.obsm[latent_mean_key].shape[1]
     niche_indexes = adata.obsm[niche_indexes_key]
 
     z1_mean_niches = adata.obsm[latent_mean_key][niche_indexes]
@@ -685,9 +683,30 @@ def get_cell_type_priors(
     labels_key: str,
     latent_mean_key: str,
     latent_var_key: str,
-    # latent_mean_ct_prior: str,
-    # latent_var_ct_prior: str,
-):
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the (non-spatial) prior for each cell type, as the average of the latent space for each cell type.
+
+    Parameters
+    ----------
+    adata
+        AnnData object that has been registered via :meth:`~scvi.model.SCVI.setup_anndata`.
+    labels_key
+        Key for cell type annotation stored in `adata.obs`.
+    latent_mean_key
+        Key for the latent mean stored in `adata.obsm`.
+    latent_var_key
+        Key for the latent variance stored in `adata.obsm`.
+
+    Returns
+    -------
+    latent_mean_priors
+        The prior for the latent mean.
+    latent_var_priors
+        The prior for the latent variance.
+        
+    """
+
     cell_types = adata.obs[labels_key].unique().tolist()
     n_cell_types = len(cell_types)
 
@@ -705,10 +724,5 @@ def get_cell_type_priors(
         latent_var_priors[i] = np.mean(
             adata[adata.obs[labels_key] == type].obsm[latent_var_key], axis=0
         )
-
-    # adata.uns[latent_mean_ct_prior] = latent_mean_priors
-    # adata.uns[latent_var_ct_prior] = latent_var_priors
-
-    # print(f"Saved {latent_mean_ct_prior} and {latent_var_ct_prior} in adata.uns")
 
     return latent_mean_priors, latent_var_priors

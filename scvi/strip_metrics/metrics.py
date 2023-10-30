@@ -349,9 +349,6 @@ class SpatialAnalysis:
                     n_jobs=-1,
                 )
 
-                # cell types in the neighborhood
-                ct = adata_fov.obsm[self.ct_composition_key].values
-
                 if latent_space_key in z2_versus_z1:
                     latent_indexes_dict[latent_space_key].append(
                         cells_in_the_latent_neighborhood
@@ -389,6 +386,9 @@ class SpatialAnalysis:
 
                 # similarity between neighborhoods------------------------------
                 if "similarity" in set_of_metrics:
+                    # cell types in the neighborhood
+                    ct = adata_fov.obsm[self.ct_composition_key].values
+
                     similarity_parallel = Parallel(n_jobs=-1)(
                         delayed(compute_similarity)(
                             ct[i],
@@ -595,31 +595,28 @@ class SpatialAnalysis:
 
         reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
 
-        # Create a console instance
-        console = Console()
-
-        # Create a table
-        table = Table(title=distribution, show_header=True, header_style="bold green")
-
-        table.add_column("Model")
-        table.add_column("Mean " + distribution)
-        table.add_column("Median " + distribution)
-        table.add_column("p-value")
-        table.add_column("p-value corrected")
+        # initialize a dict
+        stat_dict = {
+            "Model": [],
+            "Mean " + distribution: [],
+            "Median " + distribution: [],
+            "p-value": [],
+            "p-value corrected": [],
+        }
 
         for idx, latent_key in enumerate(self.latent_space_keys):
-            table.add_row(
-                latent_key,
-                str(mean_values[idx]),
-                str(median_values[idx]),
-                str(p_values[idx]),
-                str(p_values_corr[idx]),
-            )
+            stat_dict["Model"].append(latent_key)
+            stat_dict["Mean " + distribution].append(mean_values[idx])
+            stat_dict["Median " + distribution].append(median_values[idx])
+            stat_dict["p-value"].append(p_values[idx])
+            stat_dict["p-value corrected"].append(p_values_corr[idx])
 
-        # Print the table
-        console.print(table)
+        df = pd.DataFrame(stat_dict)
+        df = df.set_index("Model")
+        df = df.round(3)
+        df_sorted = df.sort_values(by="Mean " + distribution, ascending=True)
 
-        return None
+        return df_sorted
 
     def compare_neighborhoods(
         self,
@@ -627,6 +624,23 @@ class SpatialAnalysis:
         reference_key: Optional[str] = None,
         save_metric_key: str = "corr_",
     ):
+        """
+        Compute the correlation between the neighborhoods of the reference key and the comparison keys.
+
+        Parameters
+        ----------
+        comparison_keys
+            The keys in adata.obsm that contain the predicted cell type proportions.
+        reference_key
+            The key in adata.obsm that contains the ground truth cell type proportions.
+
+        Returns
+        -------
+        None
+
+        The cell type specific Pearson correlation are saved in adata.uns.
+        """
+
         if reference_key is None:
             reference_key = self.ct_composition_key
 

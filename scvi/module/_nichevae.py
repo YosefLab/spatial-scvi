@@ -272,7 +272,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_niche_components=self.n_niche_components,
             n_cat_list=cat_list,
             # n_cat_list=None,
-            n_layers=n_layers_niche,
+            n_layers=n_layers_niche, 
             n_hidden=n_hidden,
             inject_covariates=deeply_inject_covariates,
             use_batch_norm=use_batch_norm_decoder,
