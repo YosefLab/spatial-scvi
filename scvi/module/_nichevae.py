@@ -281,7 +281,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_decoder_kwargs,
         )
 
-        self.composition_decoder = CompoDecoder(
+        self.composition_decoder = DirichletDecoder(
             n_input_decoder,
             n_cell_types,
             # n_cat_list=cat_list,
@@ -289,7 +289,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_layers=n_layers_compo,
             n_hidden=n_hidden,
             # inject_covariates=deeply_inject_covariates,
-            transform=compo_transform,
             temperature=compo_temperature,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
@@ -525,9 +524,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         niche_mean, niche_variance = self.niche_decoder(
             decoder_input, batch_index, *categorical_input
         )
+
+        niche_expression = Normal(niche_mean, niche_variance.sqrt())
+
         niche_composition = self.composition_decoder(
             decoder_input, batch_index, *categorical_input
-        )
+        )  # if DirichletDecoder, niche_composition is a distribution
 
         return {
             "px": px,
@@ -639,21 +641,32 @@ class nicheVAE(BaseMinifiedModeModuleClass):
                     niche_type_posterior_distribution, niche_type_prior_distribution
                 ).sum(dim=-1)
 
+        # kl_divergence_niche = -generative_outputs["niche_expression"].log_prob().sum(dim=-1)
+
         # COMPOSITION LOSS----------------------------------------------------------------
-        true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]
+        true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY] + 1e-4
         reconstructed_niche_composition = generative_outputs["niche_composition"]
 
-        if self.compo_transform == "none":
-            input_temperature = reconstructed_niche_composition / self.compo_temperature
-            composition_loss = F.cross_entropy(
-                input=input_temperature, target=true_niche_composition
-            )
+        # if self.compo_transform == "none":
+        #     input_temperature = reconstructed_niche_composition / self.compo_temperature
+        #     composition_loss = F.cross_entropy(
+        #         input=input_temperature, target=true_niche_composition
+        #     )
 
-        # else, you are given a log_probs and you have to use another loss function like KLDiv. TODO
+        true_niche_composition = true_niche_composition / true_niche_composition.sum(
+            dim=-1,
+            keepdim=True,
+        )
+
+        composition_loss = -reconstructed_niche_composition.log_prob(
+            true_niche_composition
+        ).mean(dim=-1)
 
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
         )
+
+        # kl_divergence_z = torch.tensor(0.0, device=x.device)
 
         if not self.use_observed_lib_size:
             kl_divergence_l = kl(
@@ -696,7 +709,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             true_labels=true_niche_composition,
             logits=reconstructed_niche_composition,
             extra_metrics={
-                "niche_CE": composition_loss,
+                "niche_compo": composition_loss,
                 "niche_kl": torch.mean(kl_divergence_niche),
             },
         )

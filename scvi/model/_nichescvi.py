@@ -210,8 +210,9 @@ class nicheSCVI(
             )  # no batch correction here
 
             if self.module.compo_transform == "none":
-                predicted_ct_temperature = predicted_ct / self.module.compo_temperature
-                predicted_ct_prob = F.softmax(predicted_ct_temperature, dim=-1)
+                # predicted_ct_temperature = predicted_ct / self.module.compo_temperature
+                # predicted_ct_prob = F.softmax(predicted_ct_temperature, dim=-1)
+                predicted_ct_prob = predicted_ct.mean
 
             elif self.module.compo_transform == "log_softmax":
                 predicted_ct_prob = torch.exp(predicted_ct)
@@ -546,6 +547,7 @@ def get_neighborhood_composition(
         ]
     )
 
+    # Normalize the composition of each neighborhood
     composition = composition / indices.shape[1]
     composition = np.array(composition)
 
@@ -704,7 +706,7 @@ def get_cell_type_priors(
         The prior for the latent mean.
     latent_var_priors
         The prior for the latent variance.
-        
+
     """
 
     cell_types = adata.obs[labels_key].unique().tolist()
