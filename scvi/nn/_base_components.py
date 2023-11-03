@@ -3,7 +3,7 @@ from typing import Callable, Iterable, List, Literal, Optional
 
 import torch
 from torch import nn
-from torch.distributions import Normal
+from torch.distributions import Normal, Dirichlet
 from torch.nn import ModuleList
 
 from ._utils import one_hot
@@ -586,6 +586,38 @@ class CompoDecoder(Decoder):
             p_m = torch.log(prob_compo + eps)
         return p_m
 
+class DirichletDecoder(Decoder):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        temperature: float = 1,
+        **kwargs,
+    ):
+        super().__init__(
+            n_input=n_input,
+            n_output=n_output,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            **kwargs,
+        )
+
+        self.temperature = temperature
+
+    def forward(self, x: torch.Tensor, *cat_list: int, eps: float = 1e-6):
+        p = self.decoder(x, *cat_list)
+        p_m = self.mean_decoder(p)
+    
+        p_m = torch.softmax(p_m / self.temperature, dim=-1)
+
+        dist = Dirichlet(p_m)
+
+        return dist
+    
 
 class NicheDecoder(nn.Module):
     """Decodes data from latent space to LATENT NICHE space.

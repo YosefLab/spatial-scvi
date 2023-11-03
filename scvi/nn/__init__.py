@@ -10,6 +10,7 @@ from ._base_components import (
     MultiEncoder,
     NicheDecoder,
     CompoDecoder,
+    DirichletDecoder,
 )
 from ._utils import one_hot
 
@@ -26,4 +27,5 @@ __all__ = [
     "one_hot",
     "NicheDecoder",
     "CompoDecoder",
+    "DirichletDecoder",
 ]

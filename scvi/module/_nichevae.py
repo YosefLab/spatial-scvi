@@ -22,6 +22,7 @@ from scvi.nn import (
     Decoder,
     NicheDecoder,
     CompoDecoder,
+    DirichletDecoder,
 )
 
 torch.backends.cudnn.benchmark = True
