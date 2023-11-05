@@ -244,6 +244,8 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         latent_mean_niche_keys: Optional[list] = None,
         latent_var_niche_keys: Optional[str] = None,
+        ###########
+        latent_mean_knn_key: Optional[str] = "latent_mean_knn",
     ):
         adata.obsm[niche_indexes_key] = np.zeros(
             (adata.n_obs, k_nn)
@@ -264,6 +266,10 @@ class nicheSCVI(
             cell_coordinates_key=cell_coordinates_key,
             k_nn=k_nn,
         )
+
+        adata.obsm[latent_mean_knn_key] = adata.obsm[latent_mean_key][
+            adata.obsm[niche_indexes_key]
+        ].mean(axis=1)
 
         get_neighborhood_composition(
             adata=adata,
@@ -313,6 +319,8 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         latent_mean_ct_key: Optional[str] = None,
         latent_var_ct_key: Optional[str] = None,
+        ###########
+        latent_mean_knn_key: Optional[str] = "latent_mean_knn",
         # ---------------------
         categorical_covariate_keys: Optional[List[str]] = None,
         continuous_covariate_keys: Optional[List[str]] = None,
@@ -353,12 +361,13 @@ class nicheSCVI(
                 REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys
             ),
             ObsmField(REGISTRY_KEYS.NICHE_COMPOSITION_KEY, niche_composition_key),
-            ObsmField(REGISTRY_KEYS.NICHE_DISTANCES_KEY, niche_distances_key),
+            # ObsmField(REGISTRY_KEYS.NICHE_DISTANCES_KEY, niche_distances_key),
             ObsmField(REGISTRY_KEYS.NICHE_INDEXES_KEY, niche_indexes_key),
             ObsmField(REGISTRY_KEYS.Z1_MEAN_KEY, latent_mean_key),
             ObsmField(REGISTRY_KEYS.Z1_VAR_KEY, latent_var_key),
             ObsmField(REGISTRY_KEYS.Z1_MEAN_CT_KEY, latent_mean_ct_key),
             ObsmField(REGISTRY_KEYS.Z1_VAR_CT_KEY, latent_var_ct_key),
+            ObsmField(REGISTRY_KEYS.Z1_MEAN_KNN_KEY, latent_mean_knn_key),
             NumericalObsField(
                 REGISTRY_KEYS.INDICES_KEY, cell_index_key, required=False
             ),
@@ -602,6 +611,16 @@ def get_average_latent_per_celltype(
     latent_var_ct_keys: list[str] = ["qz1_var_niche_ct"],
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
+
+    if latent_mean_ct_keys is None:
+        adata.obsm["qz1_m_niche_ct"] = np.empty(
+            (adata.n_obs, adata.obsm[latent_mean_key].shape[1])
+        )
+        adata.obsm["qz1_var_niche_ct"] = np.empty(
+            (adata.n_obs, adata.obsm[latent_var_key].shape[1])
+        )
+
+        return None
 
     n_cells = adata.n_obs
     niche_indexes = adata.obsm[niche_indexes_key]

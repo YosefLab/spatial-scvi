@@ -126,10 +126,10 @@ def test_nichevi():
         k_nn=K_NN,
         latent_mean_key="qz1_m",
         latent_var_key="qz1_var",
-        latent_mean_niche_keys=["qz1_m_niche_ct", "qz1_m_niche_knn"],
-        latent_var_niche_keys=["qz1_var_niche_ct", "qz1_var_niche_knn"],
-        # latent_mean_ct_prior="qz1_m_niche_ct_prior",
-        # latent_var_ct_prior="qz1_var_niche_ct_prior",
+        latent_mean_niche_keys=None,
+        # latent_mean_niche_keys=["qz1_m_niche_ct"],
+        # latent_var_niche_keys=["qz1_var_niche_ct"],
+        latent_mean_knn_key="latent_mean_knn",
     )
 
     nicheSCVI.setup_anndata(
@@ -146,40 +146,24 @@ def test_nichevi():
     )
 
     niche_setup = {
-        "mix_kl0_compo0": {
-            "niche_components": "cell_type",
-            "niche_combination": "mixture",
-            "rec_weight": 1,
-            "niche_kl_weight": 0,
-            "niche_compo_weight": 0,
-        },
-        "mix_unif_kl0_compo0": {
-            "niche_components": "cell_type_unweighted",
-            "niche_combination": "mixture",
-            "rec_weight": 1,
-            "niche_kl_weight": 0,
-            "niche_compo_weight": 0,
-        },
-        "mix_kl1_compo1": {
-            "niche_components": "cell_type",
-            "niche_combination": "mixture",
-            "rec_weight": 1,
-            "niche_kl_weight": 1,
-            "niche_compo_weight": 1,
-        },
+        "r1_kl1_c1_n1": {
+            "cell_rec_weight": 1.0,
+            "niche_rec_weight": 1.0,
+            "niche_compo_weight": 1.0,
+            "latent_kl_weight": 1.0,
+        }
     }
 
-    # setup_dict = niche_setup["knn_unweighted_setup"]
-    setup_dict = niche_setup["mix_kl1_compo1"]
-    # setup_dict = niche_setup["knn_setup"]
+    setup_dict = niche_setup["r1_kl1_c1_n1"]
 
     vae = nicheSCVI(
         adata,
-        rec_weight=setup_dict["rec_weight"],
-        niche_kl_weight=setup_dict["niche_kl_weight"],
+        cell_rec_weight=setup_dict["cell_rec_weight"],
+        niche_rec_weight=setup_dict["niche_rec_weight"],
         niche_compo_weight=setup_dict["niche_compo_weight"],
-        niche_components=setup_dict["niche_components"],
-        niche_combination=setup_dict["niche_combination"],
+        latent_kl_weight=setup_dict["latent_kl_weight"],
+        niche_components="cell_type",
+        niche_combination="mixture",
         gene_likelihood=LIKELIHOOD,
         n_layers=N_LAYERS,
         n_latent=N_LATENT,

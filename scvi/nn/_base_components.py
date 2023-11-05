@@ -586,6 +586,7 @@ class CompoDecoder(Decoder):
             p_m = torch.log(prob_compo + eps)
         return p_m
 
+
 class DirichletDecoder(Decoder):
     def __init__(
         self,
