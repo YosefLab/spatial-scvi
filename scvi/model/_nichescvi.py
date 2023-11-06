@@ -203,10 +203,15 @@ class nicheSCVI(
             inference_inputs = self.module._get_inference_input(tensors)
             outputs = self.module.inference(**inference_inputs)
 
+            batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
             decoder_input = outputs["qz"].loc
 
+            # put batch_index in the same device as decoder_input
+            batch_index = batch_index.to(decoder_input.device)
+
             predicted_ct = self.module.composition_decoder(
-                decoder_input
+                decoder_input,
+                batch_index,
             )  # no batch correction here
 
             if self.module.compo_transform == "none":
