@@ -285,11 +285,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         self.composition_decoder = DirichletDecoder(
             n_input_decoder,
             n_cell_types,
-            # n_cat_list=cat_list,
-            n_cat_list=None,
+            n_cat_list=cat_list,
             n_layers=n_layers_compo,
             n_hidden=n_hidden,
-            # inject_covariates=deeply_inject_covariates,
+            inject_covariates=deeply_inject_covariates,
             temperature=compo_temperature,
             use_batch_norm=use_batch_norm_decoder,
             use_layer_norm=use_layer_norm_decoder,
@@ -674,8 +673,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         kl_divergence_z = kl(inference_outputs["qz"], generative_outputs["pz"]).sum(
             dim=-1
         )
-
-        # kl_divergence_z = torch.tensor(0.0, device=x.device)
 
         if not self.use_observed_lib_size:
             kl_divergence_l = kl(
