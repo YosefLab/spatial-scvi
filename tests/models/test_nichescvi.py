@@ -126,9 +126,9 @@ def test_nichevi():
         k_nn=K_NN,
         latent_mean_key="qz1_m",
         latent_var_key="qz1_var",
-        latent_mean_niche_keys=None,
-        # latent_mean_niche_keys=["qz1_m_niche_ct"],
-        # latent_var_niche_keys=["qz1_var_niche_ct"],
+        # latent_mean_niche_keys=None,
+        latent_mean_niche_keys=["qz1_m_niche_ct"],
+        latent_var_niche_keys=["qz1_var_niche_ct"],
         latent_mean_knn_key="latent_mean_knn",
     )
 

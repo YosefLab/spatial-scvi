@@ -271,10 +271,10 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         self.n_niche_components = (
             n_cell_types if niche_components == "cell_type" else k_nn
         )
-        self.niche_decoder = Decoder(
+        self.niche_decoder = NicheDecoder(
             n_input=n_input_decoder,
             n_output=n_latent_z1,
-            # n_niche_components=self.n_niche_components,
+            n_niche_components=self.n_niche_components,
             n_cat_list=cat_list,
             n_layers=n_layers_niche,
             n_hidden=n_hidden_niche,
@@ -553,7 +553,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY].unsqueeze(-1)
+        niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]  #.unsqueeze(-1)
         # niche_weights_distances = tensors[REGISTRY_KEYS.NICHE_DISTANCES_KEY].unsqueeze(
         #     -1
         # )
@@ -649,8 +649,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
             reconst_loss_niche = (
                 -generative_outputs["niche_expression"]
-                .log_prob(z1_mean_niche_knn)
-                .sum(dim=-1)
+                .log_prob(z1_mean_niche)
+                .sum(dim=(-1))
+            )
+
+            weighted_reconst_loss_niche = (reconst_loss_niche * niche_weights).sum(
+                dim=-1
             )
 
         # COMPOSITION LOSS----------------------------------------------------------------
@@ -696,7 +700,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
 
         loss = torch.mean(
             self.cell_rec_weight * reconst_loss_cell
-            + self.niche_rec_weight * reconst_loss_niche
+            + self.niche_rec_weight * weighted_reconst_loss_niche
             + self.niche_compo_weight * composition_loss
             + self.latent_kl_weight * weighted_kl_local
         )
