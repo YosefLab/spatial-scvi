@@ -575,46 +575,53 @@ class SpatialAnalysis:
         self,
         test: Literal["mannwhitneyu", "ks_2samp"] = "mannwhitneyu",
         distribution: Literal["distance", "similarity"] = "distance",
+        train_indices: Optional[list[int]] = None,
+        validation_indices: Optional[list[int]] = None,
     ):
         if distribution == "distance":
             metric = KEYS_SPATIAL.DISTANCE_KEY
         if distribution == "similarity":
             metric = KEYS_SPATIAL.SIMILARITY_KEY
 
-        x = self.adata.obs[metric + self.z1_reference]
-        p_values = []
-        mean_values = []
-        median_values = []
-
-        for latent_key in self.latent_space_keys:
-            y = self.adata.obs[metric + latent_key]
-            mean_values.append(np.mean(y).round(2))
-            median_values.append(np.median(y).round(2))
-            U1, p = mannwhitneyu(x, y, alternative="two-sided", method="auto")
-            p_values.append(p)
-
-        reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
-
         # initialize a dict
         stat_dict = {
-            "Model": [],
-            "Mean " + distribution: [],
-            "Median " + distribution: [],
-            "p-value": [],
-            "p-value corrected": [],
+            "Model": self.latent_space_keys,
         }
 
-        for idx, latent_key in enumerate(self.latent_space_keys):
-            stat_dict["Model"].append(latent_key)
-            stat_dict["Mean " + distribution].append(mean_values[idx])
-            stat_dict["Median " + distribution].append(median_values[idx])
-            stat_dict["p-value"].append(p_values[idx])
-            stat_dict["p-value corrected"].append(p_values_corr[idx])
+        indices_dict = {"train": train_indices, "validation": validation_indices}
+
+        for indices_key, indices in indices_dict.items():
+            x = self.adata.obs[metric + self.z1_reference][indices]
+            p_values = []
+            mean_values = []
+            median_values = []
+
+            for latent_key in self.latent_space_keys:
+                y = self.adata.obs[metric + latent_key][indices]
+                mean_values.append(np.mean(y))
+                median_values.append(np.var(y))
+                U1, p = mannwhitneyu(x, y, alternative="two-sided", method="auto")
+                p_values.append(p)
+
+            reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
+
+            stat_dict["Mean " + distribution + " " + indices_key] = mean_values
+            stat_dict["Var " + distribution + " " + indices_key] = median_values
+            stat_dict["p-value corrected " + indices_key] = p_values_corr
+
+        # for idx, latent_key in enumerate(self.latent_space_keys):
+        #     stat_dict["Model"].append(latent_key)
+        #     stat_dict["Mean " + distribution].append(mean_values[idx])
+        #     stat_dict["Median " + distribution].append(median_values[idx])
+        #     stat_dict["p-value"].append(p_values[idx])
+        #     stat_dict["p-value corrected"].append(p_values_corr[idx])
 
         df = pd.DataFrame(stat_dict)
         df = df.set_index("Model")
         df = df.round(3)
-        df_sorted = df.sort_values(by="Mean " + distribution, ascending=True)
+        df_sorted = df.sort_values(
+            by="Mean " + distribution + " " + indices_key, ascending=True
+        )
 
         return df_sorted
 
@@ -622,6 +629,10 @@ class SpatialAnalysis:
         self,
         comparison_keys: str,
         reference_key: Optional[str] = None,
+        train_indices: Optional[list[int]] = None,
+        validation_indices: Optional[list[int]] = None,
+        train_only: bool = False,
+        validation_only: bool = False,
         save_metric_key: str = "corr_",
     ):
         """
@@ -640,15 +651,32 @@ class SpatialAnalysis:
 
         The cell type specific Pearson correlation are saved in adata.uns.
         """
+        if train_only:
+            if train_indices is None:
+                raise ValueError(
+                    "Please provide train_indices when train_only is True."
+                )
+            else:
+                adata = self.adata[train_indices].copy()
+                save_metric_key = "train_" + save_metric_key
+
+        if validation_only:
+            if validation_indices is None:
+                raise ValueError(
+                    "Please provide validation_indices when validation_only is True."
+                )
+            else:
+                adata = self.adata[validation_indices].copy()
+                save_metric_key = "val_" + save_metric_key
+        else:
+            adata = self.adata.copy()
 
         if reference_key is None:
             reference_key = self.ct_composition_key
 
-        neighborhood_ref = self.adata.obsm[reference_key]
+        neighborhood_ref = adata.obsm[reference_key]
 
-        proportions_ref = self.adata.obs[self.label_key].value_counts() / len(
-            self.adata
-        )
+        proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(
             proportions_ref, index=neighborhood_ref.columns
         )
@@ -657,9 +685,9 @@ class SpatialAnalysis:
 
         for key in comparison_keys:
             neighborhood_pred = pd.DataFrame(
-                self.adata.obsm[key],
+                adata.obsm[key],
                 columns=neighborhood_ref.columns,
-                index=self.adata.obs_names,
+                index=adata.obs_names,
             )
             # then loop over cell types:
             metric_dict = {}
@@ -669,8 +697,8 @@ class SpatialAnalysis:
                 pred_neighbors_ct = neighborhood_pred[ct]
                 metric_ct = [
                     pearsonr(
-                        true_neighbors_ct[self.adata.obs.cell_type == i],
-                        pred_neighbors_ct[self.adata.obs.cell_type == i],
+                        true_neighbors_ct[adata.obs.cell_type == i],
+                        pred_neighbors_ct[adata.obs.cell_type == i],
                     )[0]
                     for i in neighborhood_ref.columns
                 ]
