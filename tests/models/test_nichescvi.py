@@ -173,13 +173,18 @@ def test_nichevi():
         use_layer_norm="none",
     )
 
-    vae.train(1)
-    print("I am here")
-    vae.train(3, plan_kwargs=dict(lr=1e-3, optimizer="Adam"))
+    # vae.train(1)
+    # print("I am here")
+    vae.train(
+        3,
+        plan_kwargs=dict(weight_decay=1e-3, n_epochs_kl_warmup=None),
+        check_val_every_n_epoch=1,
+    )
     vae.get_elbo(indices=vae.validation_indices)
     vae.get_normalized_expression()
     vae.get_latent_representation()
     vae.predict_neighborhood()  # specific to nicheSCVI
+    vae.predict_niche_activation()  # specific to nicheSCVI
     print("Finished training")
     vae.differential_expression(groupby="labels", group1="label_1")
     vae.differential_expression(groupby="labels", group1="label_1", group2="label_2")

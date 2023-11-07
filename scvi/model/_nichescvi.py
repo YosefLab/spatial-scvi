@@ -231,6 +231,40 @@ class nicheSCVI(
 
         return torch.cat(ct_prediction).numpy()
 
+    @torch.inference_mode()
+    def predict_niche_activation(
+        self,
+        adata: Optional[AnnData] = None,
+        indices: Optional[Sequence[int]] = None,
+        batch_size: Optional[int] = None,
+    ):
+        self._check_if_trained(warn=False)
+
+        adata = self._validate_anndata(adata)
+        scdl = self._make_data_loader(
+            adata=adata, indices=indices, batch_size=batch_size
+        )
+
+        activation_prediction = []
+        for tensors in scdl:
+            inference_inputs = self.module._get_inference_input(tensors)
+            outputs = self.module.inference(**inference_inputs)
+
+            batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
+            decoder_input = outputs["qz"].loc
+
+            # put batch_index in the same device as decoder_input
+            batch_index = batch_index.to(decoder_input.device)
+
+            niche_mean, niche_variance = self.module.niche_decoder(
+                decoder_input,
+                batch_index,
+            )
+
+            activation_prediction.append(niche_mean.detach().cpu())
+
+        return torch.cat(activation_prediction).numpy()
+
     def preprocessing_anndata(
         adata: AnnData,
         niche_composition_key: Optional[str] = None,
