@@ -217,19 +217,6 @@ class SpatialAnalysis:
 
         self.leiden_keys = None
 
-        self.color_plots = [
-            "red",
-            "blue",
-            "green",
-            "orange",
-            "purple",
-            "brown",
-            "pink",
-            "gray",
-            "olive",
-            "cyan",
-        ]
-
     def leiden_clusters(
         self,
         resolution: float = 0.5,
@@ -544,6 +531,24 @@ class SpatialAnalysis:
                 + METRIC_TITLE.SIMILARITY_KEY
             )
 
+        self.color_plots = [
+            "red",
+            "blue",
+            "green",
+            "orange",
+            "purple",
+            "brown",
+            "pink",
+            "gray",
+            "olive",
+            "cyan",
+            "teal",
+            "lavender",
+            "maroon",
+            "gold",
+            "indigo",
+        ]
+
         for idx, latent_key in enumerate(self.latent_space_keys):
             if plot_type == "kde":
                 sns.kdeplot(
@@ -599,14 +604,14 @@ class SpatialAnalysis:
             for latent_key in self.latent_space_keys:
                 y = self.adata.obs[metric + latent_key][indices]
                 mean_values.append(np.mean(y))
-                median_values.append(np.var(y))
+                median_values.append(np.std(y))
                 U1, p = mannwhitneyu(x, y, alternative="two-sided", method="auto")
                 p_values.append(p)
 
             reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
 
             stat_dict["Mean " + distribution + " " + indices_key] = mean_values
-            stat_dict["Var " + distribution + " " + indices_key] = median_values
+            stat_dict["Std " + distribution + " " + indices_key] = median_values
             stat_dict["p-value corrected " + indices_key] = p_values_corr
 
         # for idx, latent_key in enumerate(self.latent_space_keys):
@@ -659,6 +664,7 @@ class SpatialAnalysis:
             else:
                 adata = self.adata[train_indices].copy()
                 save_metric_key = "train_" + save_metric_key
+                mode = "train"
 
         if validation_only:
             if validation_indices is None:
@@ -668,8 +674,10 @@ class SpatialAnalysis:
             else:
                 adata = self.adata[validation_indices].copy()
                 save_metric_key = "val_" + save_metric_key
+                mode = "validation"
         else:
             adata = self.adata.copy()
+            # mode = "all"
 
         if reference_key is None:
             reference_key = self.ct_composition_key
@@ -682,6 +690,7 @@ class SpatialAnalysis:
         )
 
         keys_added = []
+        summary_pearson = []
 
         for key in comparison_keys:
             neighborhood_pred = pd.DataFrame(
@@ -723,6 +732,21 @@ class SpatialAnalysis:
 
             keys_added.append(save_metric_key + key)
 
+            summary_pearson.append(metric_df["weighted_mean"].values[-1])
+
         rprint("Saved metric in: ", keys_added)
 
-        return None
+        df_summary = pd.DataFrame(
+            {
+                "Model": comparison_keys,
+                mode + " Pearson ": summary_pearson,
+            }
+        )
+
+        df_summary = df_summary.set_index("Model")
+        df_summary = df_summary.round(3)
+        df_summary_sorted = df_summary.sort_values(
+            by=mode + " Pearson ", ascending=False
+        )
+
+        return df_summary_sorted
