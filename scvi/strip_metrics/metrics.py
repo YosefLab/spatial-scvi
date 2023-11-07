@@ -191,6 +191,25 @@ KEYS_SPATIAL = _KEYS_SPATIAL()
 METRIC_TITLE = _METRIC_TITLE()
 
 
+color_plots = [
+    "red",
+    "blue",
+    "green",
+    "orange",
+    "purple",
+    "brown",
+    "pink",
+    "gray",
+    "olive",
+    "cyan",
+    "teal",
+    "lavender",
+    "maroon",
+    "gold",
+    "indigo",
+]
+
+
 class SpatialAnalysis:
     def __init__(
         self,
@@ -202,21 +221,24 @@ class SpatialAnalysis:
         ct_composition_key: str,
         sample_subset: Optional[list[str]] = None,
         z1_reference: Optional[str] = None,
-        z2_comparison: Optional[str] = None,
+        train_indices: Optional[list[int]] = None,
+        validation_indices: Optional[list[int]] = None,
     ):
+        
+        self.adata = adata
+        self.sample_subset = sample_subset
+        self.train_indices = train_indices
+        self.validation_indices = validation_indices
+
         self.label_key = label_key
         self.sample_key = sample_key
         self.latent_space_keys = latent_space_keys
         self.spatial_coord_key = spatial_coord_key
         self.ct_composition_key = ct_composition_key
-        self.adata = adata
-        self.sample_subset = sample_subset
-
         self.z1_reference = z1_reference
-        self.z2_comparison = z2_comparison
-
         self.leiden_keys = None
 
+      
     def leiden_clusters(
         self,
         resolution: float = 0.5,
@@ -516,7 +538,7 @@ class SpatialAnalysis:
     def plot_metrics(
         self,
         metric: Literal[*SET_OF_METRICS],
-        plot_type: Literal["kde", "ecdf"] = "ecdf",
+        plot_type: Literal["kde", "ecdf", "boxplot"] = "ecdf",
     ):
         if metric == "distance":
             metric_key = KEYS_SPATIAL.DISTANCE_KEY
@@ -531,30 +553,12 @@ class SpatialAnalysis:
                 + METRIC_TITLE.SIMILARITY_KEY
             )
 
-        self.color_plots = [
-            "red",
-            "blue",
-            "green",
-            "orange",
-            "purple",
-            "brown",
-            "pink",
-            "gray",
-            "olive",
-            "cyan",
-            "teal",
-            "lavender",
-            "maroon",
-            "gold",
-            "indigo",
-        ]
-
         for idx, latent_key in enumerate(self.latent_space_keys):
             if plot_type == "kde":
                 sns.kdeplot(
                     data=self.adata.obs[metric_key + latent_key],
                     label=latent_key,
-                    color=self.color_plots[idx],
+                    color=color_plots[idx],
                     alpha=0.5,
                 )
 
@@ -562,9 +566,12 @@ class SpatialAnalysis:
                 sns.ecdfplot(
                     data=self.adata.obs[metric_key + latent_key],
                     label=latent_key,
-                    color=self.color_plots[idx],
+                    color=color_plots[idx],
                     alpha=0.5,
                 )
+
+            if plot_type == "boxplot":
+                
 
         if plot_type == "kde":
             plt.title("Kernel density estimation")
@@ -580,8 +587,6 @@ class SpatialAnalysis:
         self,
         test: Literal["mannwhitneyu", "ks_2samp"] = "mannwhitneyu",
         distribution: Literal["distance", "similarity"] = "distance",
-        train_indices: Optional[list[int]] = None,
-        validation_indices: Optional[list[int]] = None,
     ):
         if distribution == "distance":
             metric = KEYS_SPATIAL.DISTANCE_KEY
@@ -593,7 +598,7 @@ class SpatialAnalysis:
             "Model": self.latent_space_keys,
         }
 
-        indices_dict = {"train": train_indices, "validation": validation_indices}
+        indices_dict = {"train": self.train_indices, "validation": self.validation_indices}
 
         for indices_key, indices in indices_dict.items():
             x = self.adata.obs[metric + self.z1_reference][indices]
@@ -614,13 +619,6 @@ class SpatialAnalysis:
             stat_dict["Std " + distribution + " " + indices_key] = median_values
             stat_dict["p-value corrected " + indices_key] = p_values_corr
 
-        # for idx, latent_key in enumerate(self.latent_space_keys):
-        #     stat_dict["Model"].append(latent_key)
-        #     stat_dict["Mean " + distribution].append(mean_values[idx])
-        #     stat_dict["Median " + distribution].append(median_values[idx])
-        #     stat_dict["p-value"].append(p_values[idx])
-        #     stat_dict["p-value corrected"].append(p_values_corr[idx])
-
         df = pd.DataFrame(stat_dict)
         df = df.set_index("Model")
         df = df.round(3)
@@ -634,8 +632,6 @@ class SpatialAnalysis:
         self,
         comparison_keys: str,
         reference_key: Optional[str] = None,
-        train_indices: Optional[list[int]] = None,
-        validation_indices: Optional[list[int]] = None,
         train_only: bool = False,
         validation_only: bool = False,
         save_metric_key: str = "corr_",
@@ -657,22 +653,22 @@ class SpatialAnalysis:
         The cell type specific Pearson correlation are saved in adata.uns.
         """
         if train_only:
-            if train_indices is None:
+            if self.train_indices is None:
                 raise ValueError(
                     "Please provide train_indices when train_only is True."
                 )
             else:
-                adata = self.adata[train_indices].copy()
+                adata = self.adata[self.train_indices].copy()
                 save_metric_key = "train_" + save_metric_key
                 mode = "train"
 
         if validation_only:
-            if validation_indices is None:
+            if self.validation_indices is None:
                 raise ValueError(
                     "Please provide validation_indices when validation_only is True."
                 )
             else:
-                adata = self.adata[validation_indices].copy()
+                adata = self.adata[self.validation_indices].copy()
                 save_metric_key = "val_" + save_metric_key
                 mode = "validation"
         else:
@@ -687,7 +683,7 @@ class SpatialAnalysis:
         proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(
             proportions_ref, index=neighborhood_ref.columns
-        )
+        )  # TODO cell-type specific proportions
 
         keys_added = []
         summary_pearson = []

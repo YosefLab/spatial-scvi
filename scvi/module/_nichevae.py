@@ -553,7 +553,9 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
 
-        niche_weights_ct = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY]  #.unsqueeze(-1)
+        niche_weights_ct = tensors[
+            REGISTRY_KEYS.NICHE_COMPOSITION_KEY
+        ]  # .unsqueeze(-1)
         # niche_weights_distances = tensors[REGISTRY_KEYS.NICHE_DISTANCES_KEY].unsqueeze(
         #     -1
         # )
@@ -720,7 +722,6 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             extra_metrics={
                 "niche_compo": torch.mean(composition_loss),
                 "niche_reconst": torch.mean(reconst_loss_niche),
-                # "cell_reconst": torch.mean(reconst_loss_cell),
             },
         )
 
