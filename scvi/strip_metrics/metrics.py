@@ -223,8 +223,11 @@ class SpatialAnalysis:
         z1_reference: Optional[str] = None,
         train_indices: Optional[list[int]] = None,
         validation_indices: Optional[list[int]] = None,
+        ##########
+        set_of_metrics: list[str] = SET_OF_METRICS,
+        similarity_metric: str = "spearman",
+        reduction: list[str] = ["median", "mean"],
     ):
-        
         self.adata = adata
         self.sample_subset = sample_subset
         self.train_indices = train_indices
@@ -238,7 +241,15 @@ class SpatialAnalysis:
         self.z1_reference = z1_reference
         self.leiden_keys = None
 
-      
+        set = np.empty(len(self.adata), dtype="object")
+        set[self.validation_indices] = "validation"
+        set[self.train_indices] = "train"
+        self.adata.obs["set"] = set
+
+        self.set_of_metrics = set_of_metrics
+        self.similarity_metric = similarity_metric
+        self.reduction = reduction
+
     def leiden_clusters(
         self,
         resolution: float = 0.5,
@@ -307,10 +318,7 @@ class SpatialAnalysis:
 
     def compute_metrics(
         self,
-        k_nn: int,
-        set_of_metrics: list[str] = SET_OF_METRICS,
-        similarity_metric: str = "spearman",
-        reduction: list[str] = ["median", "mean"],
+        k_nn: int = 50,
     ) -> None:
         """
         Compute the spatial metrics.
@@ -318,20 +326,9 @@ class SpatialAnalysis:
         Parameters
         ----------
         k_nn
-            The number of neighbors to consider in the spatial analysis.
-        set_of_metrics
-            The set of metrics to compute.
-        similarity_metric
-            The similarity metric to use.
-        reduction
-            The reduction method to use.
+            The number of latent neighbors to consider in the spatial analysis.
         """
 
-        self.set_of_metrics = set_of_metrics
-        self.similarity_metric = similarity_metric
-        self.reduction = reduction
-
-        z2_versus_z1 = [self.z1_reference, self.z2_comparison]
         fov_names = self.adata.obs[self.sample_key].unique().tolist()
 
         latent_indexes_dict = {}
@@ -340,9 +337,6 @@ class SpatialAnalysis:
         for latent_space_key in self.latent_space_keys:
             latent_and_phys_corr = []
             neighborhood_similarity = []
-
-            if latent_space_key in z2_versus_z1:
-                latent_indexes_dict[latent_space_key] = []
 
             # Loop over fovs:
             for fov in tqdm(fov_names, desc=latent_space_key, colour="blue"):
@@ -358,12 +352,7 @@ class SpatialAnalysis:
                     n_jobs=-1,
                 )
 
-                if latent_space_key in z2_versus_z1:
-                    latent_indexes_dict[latent_space_key].append(
-                        cells_in_the_latent_neighborhood
-                    )
-
-                if "distance" in set_of_metrics:
+                if "distance" in self.set_of_metrics:
                     xy = adata_fov.obsm[self.spatial_coord_key]  # .values
 
                     spatial_coord_of_latent_neighbors_fov = xy[
@@ -382,19 +371,19 @@ class SpatialAnalysis:
 
                     dists_parallel = np.squeeze(np.array(dists_parallel))
 
-                    if reduction[0] == "median":
+                    if self.reduction[0] == "median":
                         reducted_dists = np.median(dists_parallel, axis=-1)
 
-                    if reduction[0] == "mean":
+                    if self.reduction[0] == "mean":
                         reducted_dists = np.mean(dists_parallel, axis=-1)
 
-                    if reduction[0] is None:
+                    if self.reduction[0] is None:
                         reducted_dists = dists_parallel
 
                     latent_and_phys_corr.append(reducted_dists.flatten())
 
                 # similarity between neighborhoods------------------------------
-                if "similarity" in set_of_metrics:
+                if "similarity" in self.set_of_metrics:
                     # cell types in the neighborhood
                     ct = adata_fov.obsm[self.ct_composition_key].values
 
@@ -402,25 +391,25 @@ class SpatialAnalysis:
                         delayed(compute_similarity)(
                             ct[i],
                             ct[cells_in_the_latent_neighborhood[i]],
-                            similarity_metric,
+                            self.similarity_metric,
                         )
                         for i in range(n_cells)
                     )
 
                     similarity_parallel = np.squeeze(np.array(similarity_parallel))
 
-                    if reduction[1] == "median":
+                    if self.reduction[1] == "median":
                         reducted_similarity = np.median(similarity_parallel, axis=-1)
 
-                    if reduction[1] == "mean":
+                    if self.reduction[1] == "mean":
                         reducted_similarity = np.mean(similarity_parallel, axis=-1)
 
-                    if reduction[1] == None:
+                    if self.reduction[1] == None:
                         reducted_similarity = similarity_parallel
 
                     neighborhood_similarity.append(reducted_similarity.flatten())
 
-            if "distance" in set_of_metrics:
+            if "distance" in self.set_of_metrics:
                 self.adata.obs[
                     KEYS_SPATIAL.DISTANCE_KEY + latent_space_key
                 ] = np.concatenate(latent_and_phys_corr)
@@ -430,7 +419,7 @@ class SpatialAnalysis:
                 #     + "."
                 # )
 
-            if "similarity" in set_of_metrics:
+            if "similarity" in self.set_of_metrics:
                 self.adata.obs[
                     KEYS_SPATIAL.SIMILARITY_KEY + latent_space_key
                 ] = np.concatenate(neighborhood_similarity)
@@ -440,7 +429,7 @@ class SpatialAnalysis:
                 #     + "."
                 # )
 
-        if "cluster_stats" in set_of_metrics:
+        if "cluster_stats" in self.set_of_metrics:
             if self.leiden_keys is None:
                 raise ValueError(
                     "Please run the method leiden_clusters before running cluster_stats."
@@ -470,7 +459,7 @@ class SpatialAnalysis:
                     df_mean.sort_index(), df_std.sort_index()
                 )
 
-        if "latent_overlap" in set_of_metrics:
+        if "latent_overlap" in self.set_of_metrics:
             # check if latent_indexes_dict is empty
             if len(latent_indexes_dict) == 0:
                 raise ValueError(
@@ -553,30 +542,42 @@ class SpatialAnalysis:
                 + METRIC_TITLE.SIMILARITY_KEY
             )
 
-        for idx, latent_key in enumerate(self.latent_space_keys):
-            if plot_type == "kde":
-                sns.kdeplot(
-                    data=self.adata.obs[metric_key + latent_key],
-                    label=latent_key,
-                    color=color_plots[idx],
-                    alpha=0.5,
-                )
+        if plot_type == "boxplot":
+            columns_to_plot = [
+                metric_key + latent_key for latent_key in self.latent_space_keys
+            ]
+            self.adata.obs.boxplot(
+                column=columns_to_plot,
+                by="set",
+                layout=(len(columns_to_plot), 1),
+                rot=45,
+                figsize=(5, 11 * len(columns_to_plot)),
+            )
 
-            if plot_type == "ecdf":
-                sns.ecdfplot(
-                    data=self.adata.obs[metric_key + latent_key],
-                    label=latent_key,
-                    color=color_plots[idx],
-                    alpha=0.5,
-                )
+        else:
+            for idx, latent_key in enumerate(self.latent_space_keys):
+                if plot_type == "kde":
+                    sns.kdeplot(
+                        data=self.adata.obs[metric_key + latent_key],
+                        label=latent_key,
+                        color=color_plots[idx],
+                        alpha=0.5,
+                    )
 
-            if plot_type == "boxplot":
-                
+                if plot_type == "ecdf":
+                    sns.ecdfplot(
+                        data=self.adata.obs[metric_key + latent_key],
+                        label=latent_key,
+                        color=color_plots[idx],
+                        alpha=0.5,
+                    )
 
         if plot_type == "kde":
             plt.title("Kernel density estimation")
         if plot_type == "ecdf":
             plt.title("Empirical cumulative distribution function")
+        if plot_type == "boxplot":
+            plt.title("Boxplot")
         plt.xlabel(metric_title)
         plt.legend()  # Add a legend to display the labels
         plt.show()
@@ -587,6 +588,7 @@ class SpatialAnalysis:
         self,
         test: Literal["mannwhitneyu", "ks_2samp"] = "mannwhitneyu",
         distribution: Literal["distance", "similarity"] = "distance",
+        plot: bool = True,
     ):
         if distribution == "distance":
             metric = KEYS_SPATIAL.DISTANCE_KEY
@@ -598,7 +600,10 @@ class SpatialAnalysis:
             "Model": self.latent_space_keys,
         }
 
-        indices_dict = {"train": self.train_indices, "validation": self.validation_indices}
+        indices_dict = {
+            "train": self.train_indices,
+            "validation": self.validation_indices,
+        }
 
         for indices_key, indices in indices_dict.items():
             x = self.adata.obs[metric + self.z1_reference][indices]
@@ -625,6 +630,38 @@ class SpatialAnalysis:
         df_sorted = df.sort_values(
             by="Mean " + distribution + " " + indices_key, ascending=True
         )
+
+        if plot:
+            df = df_sorted
+            # Set the x-axis locations
+            x = range(len(df))
+            # Specify the bar width
+            bar_width = 0.35
+            # Create the plot
+            plt.figure(figsize=(10, 6))
+            plt.bar(
+                x,
+                df["Mean " + distribution + " train"],
+                width=bar_width,
+                yerr=df["Std " + distribution + " train"],
+                label="Train",
+                capsize=5,
+            )
+            plt.bar(
+                [i + bar_width for i in x],
+                df["Mean " + distribution + " validation"],
+                width=bar_width,
+                yerr=df["Std " + distribution + " validation"],
+                label="Val",
+                capsize=5,
+            )
+            plt.xlabel("Setup")
+            plt.ylabel("Mean " + distribution)
+            plt.title("Means with Standard Deviation Error Bars")
+            plt.xticks([i + bar_width / 2 for i in x], df.index, rotation=75)
+            plt.legend()
+            plt.grid()
+            plt.show()
 
         return df_sorted
 
