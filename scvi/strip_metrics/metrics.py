@@ -19,9 +19,9 @@ from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors, kneighbors_graph
 from scvi.nearest_neighbors import pynndescent
 
-import pingouin as pg
+import pingouin as pgs
 from scipy.stats import mannwhitneyu, ks_2samp, entropy, pearsonr
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, roc_auc_score
 
 from dataclasses import dataclass
 
@@ -671,24 +671,11 @@ class SpatialAnalysis:
         reference_key: Optional[str] = None,
         train_only: bool = False,
         validation_only: bool = False,
-        save_metric_key: str = "corr_",
+        metric: Literal["Pearson", "AUC"] = "Pearson",
     ):
-        """
-        Compute the correlation between the neighborhoods of the reference key and the comparison keys.
+       
+        save_metric_key = "corr_" if metric == "Pearson" else "auc_"
 
-        Parameters
-        ----------
-        comparison_keys
-            The keys in adata.obsm that contain the predicted cell type proportions.
-        reference_key
-            The key in adata.obsm that contains the ground truth cell type proportions.
-
-        Returns
-        -------
-        None
-
-        The cell type specific Pearson correlation are saved in adata.uns.
-        """
         if train_only:
             if self.train_indices is None:
                 raise ValueError(
@@ -717,13 +704,21 @@ class SpatialAnalysis:
 
         neighborhood_ref = adata.obsm[reference_key]
 
+        if metric == "AUC":
+            #make sure that the reference is binary
+            neighborhood_ref = (neighborhood_ref > 0).applymap(int)
+            metric_fct = lambda x, y: roc_auc_score(x, y)
+        
+        else:
+            metric_fct = lambda x, y: pearsonr(x, y)[0]
+
         proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(
             proportions_ref, index=neighborhood_ref.columns
         )  # TODO cell-type specific proportions
 
         keys_added = []
-        summary_pearson = []
+        summary_score = []
 
         for key in comparison_keys:
             neighborhood_pred = pd.DataFrame(
@@ -738,10 +733,10 @@ class SpatialAnalysis:
                 true_neighbors_ct = neighborhood_ref[ct]
                 pred_neighbors_ct = neighborhood_pred[ct]
                 metric_ct = [
-                    pearsonr(
+                    metric_fct(
                         true_neighbors_ct[adata.obs.cell_type == i],
                         pred_neighbors_ct[adata.obs.cell_type == i],
-                    )[0]
+                    )
                     for i in neighborhood_ref.columns
                 ]
                 metric_dict[ct] = metric_ct
@@ -765,21 +760,21 @@ class SpatialAnalysis:
 
             keys_added.append(save_metric_key + key)
 
-            summary_pearson.append(metric_df["weighted_mean"].values[-1])
+            summary_score.append(metric_df["weighted_mean"].values[-1])
 
         rprint("Saved metric in: ", keys_added)
 
         df_summary = pd.DataFrame(
             {
                 "Model": comparison_keys,
-                mode + " Pearson ": summary_pearson,
+                mode + " " + metric + " ": summary_score,
             }
         )
 
         df_summary = df_summary.set_index("Model")
         df_summary = df_summary.round(3)
         df_summary_sorted = df_summary.sort_values(
-            by=mode + " Pearson ", ascending=False
+            by=mode + " " + metric + " ", ascending=False
         )
 
         return df_summary_sorted
