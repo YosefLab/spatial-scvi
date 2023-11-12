@@ -130,6 +130,7 @@ def test_nichevi():
         latent_mean_niche_keys=["qz1_m_niche_ct"],
         latent_var_niche_keys=["qz1_var_niche_ct"],
         latent_mean_knn_key="latent_mean_knn",
+        zero_prior=True,
     )
 
     nicheSCVI.setup_anndata(
@@ -162,7 +163,7 @@ def test_nichevi():
         niche_rec_weight=setup_dict["niche_rec_weight"],
         niche_compo_weight=setup_dict["niche_compo_weight"],
         latent_kl_weight=setup_dict["latent_kl_weight"],
-        niche_components="cell_type",
+        niche_components="cell_type_unweighted",
         niche_combination="mixture",
         gene_likelihood=LIKELIHOOD,
         n_layers=N_LAYERS,

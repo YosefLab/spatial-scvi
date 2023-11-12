@@ -283,6 +283,7 @@ class nicheSCVI(
         latent_var_key: Optional[str] = None,
         latent_mean_niche_keys: Optional[list] = None,
         latent_var_niche_keys: Optional[str] = None,
+        zero_prior: bool = False,
         ###########
         latent_mean_knn_key: Optional[str] = "latent_mean_knn",
     ):
@@ -333,6 +334,7 @@ class nicheSCVI(
             latent_var_key=latent_var_key,
             latent_mean_ct_keys=latent_mean_niche_keys,
             latent_var_ct_keys=latent_var_niche_keys,
+            zero_prior=zero_prior,
         )
 
         return None
@@ -648,6 +650,7 @@ def get_average_latent_per_celltype(
     latent_var_key: str,
     latent_mean_ct_keys: list[str] = ["qz1_m_niche_ct"],
     latent_var_ct_keys: list[str] = ["qz1_var_niche_ct"],
+    zero_prior: bool = False,
 ):
     # for each cell, take the average of the latent space for each label, namely the label-averaged latent_mean obsm
 
@@ -709,6 +712,7 @@ def get_average_latent_per_celltype(
             latent_var_key=latent_var_key,
             # latent_mean_ct_prior=latent_mean_ct_prior,
             # latent_var_ct_prior=latent_var_ct_prior,
+            zero_prior=zero_prior,
         )
 
         z1_mean_niches_ct = np.stack(
@@ -743,6 +747,7 @@ def get_cell_type_priors(
     labels_key: str,
     latent_mean_key: str,
     latent_var_key: str,
+    zero_prior: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute the (non-spatial) prior for each cell type, as the average of the latent space for each cell type.
@@ -773,8 +778,11 @@ def get_cell_type_priors(
     int_to_cell_types = {i: cell_types[i] for i in range(n_cell_types)}
     n_latent_z1 = adata.obsm[latent_mean_key].shape[1]
 
-    latent_mean_priors = np.empty((n_cell_types, n_latent_z1))
-    latent_var_priors = np.empty((n_cell_types, n_latent_z1))
+    latent_mean_priors = np.zeros((n_cell_types, n_latent_z1))
+    latent_var_priors = np.zeros_like(latent_mean_priors)
+
+    if zero_prior:
+        return latent_mean_priors, latent_var_priors
 
     for i in range(n_cell_types):
         type = int_to_cell_types[i]

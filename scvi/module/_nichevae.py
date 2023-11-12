@@ -112,7 +112,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         n_cell_types: Optional[int],
         k_nn: Optional[int],
         niche_components: Literal[
-            "cell_type", "knn", "knn_unweighted", "ct_unweighted"
+            "cell_type", "knn", "knn_unweighted", "cell_type_unweighted"
         ] = "cell_type",
         niche_combination: Literal["aggregate", "mixture"] = "mixture",
         ###########
@@ -269,7 +269,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         )
 
         self.n_niche_components = (
-            n_cell_types if niche_components == "cell_type" else k_nn
+            n_cell_types if niche_components.startswith("cell_type") else k_nn
         )
         self.niche_decoder = NicheDecoder(
             n_input=n_input_decoder,
@@ -570,9 +570,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         #     niche_weights = torch.ones_like(niche_weights_distances)
 
         elif self.niche_components == "cell_type_unweighted":
-            niche_weights = torch.ones_like(niche_weights_ct) / niche_weights_ct.size(
-                dim=-1
-            )
+            niche_weights = (niche_weights_ct > 0).applymap(int)
 
         n_batch = niche_weights.shape[0]
         n_cell_types = niche_weights_ct.size(dim=-1)
