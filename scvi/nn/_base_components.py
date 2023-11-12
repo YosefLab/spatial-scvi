@@ -607,13 +607,10 @@ class DirichletDecoder(Decoder):
             **kwargs,
         )
 
-        self.temperature = temperature
-
     def forward(self, x: torch.Tensor, *cat_list: int, eps: float = 1e-6):
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
 
-        # p_m = torch.softmax(p_m / self.temperature, dim=-1)
         p_m = torch.nn.Softplus()(p_m) + eps
 
         dist = Dirichlet(p_m)
