@@ -114,7 +114,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         niche_components: Literal[
             "cell_type", "knn", "knn_unweighted", "cell_type_unweighted"
         ] = "cell_type",
-        niche_combination: Literal["aggregate", "mixture"] = "mixture",
+        niche_combination: Literal["latent", "observed"] = "latent",
         ###########
         cell_rec_weight: float = 1.0,
         niche_rec_weight: float = 1.0,
@@ -549,6 +549,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         inference_outputs,
         generative_outputs,
         kl_weight: float = 1.0,
+        epsilon: float = 1e-6,
     ):
         """Computes the loss function for the model."""
         x = tensors[REGISTRY_KEYS.X_KEY]
@@ -563,90 +564,61 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         if self.niche_components == "cell_type":
             niche_weights = niche_weights_ct
 
+        elif self.niche_components == "cell_type_unweighted":
+            niche_weights = (niche_weights_ct > 0).float()
+
         # elif self.niche_components == "knn":
         #     niche_weights = niche_weights_distances
 
         # elif self.niche_components == "knn_unweighted":
         #     niche_weights = torch.ones_like(niche_weights_distances)
 
-        elif self.niche_components == "cell_type_unweighted":
-            niche_weights = (niche_weights_ct > 0).applymap(int)
-
         n_batch = niche_weights.shape[0]
         n_cell_types = niche_weights_ct.size(dim=-1)
 
-        # NICHE OBSERVED DISTRIBUTION-------------------------------------------------------------------------------
+        # NICHE PRIOR DISTRIBUTION-------------------------------------------------------------------------------
 
         z1_mean_niche = tensors[
             REGISTRY_KEYS.Z1_MEAN_CT_KEY
         ]  # batch times cell_types times n_latent
         z1_var_niche = tensors[REGISTRY_KEYS.Z1_VAR_CT_KEY]
 
-        z1_mean_niche_knn = tensors[REGISTRY_KEYS.Z1_MEAN_KNN_KEY]
-
-        # --------------aggregate---------------------------------------------------------
-        if self.niche_combination == "aggregate":
-            z1_mean_niche = niche_weights * z1_mean_niche
-            z1_var_niche = torch.square(niche_weights) * z1_var_niche
-
-            z1_mean_niche_agg = torch.sum(
-                z1_mean_niche, dim=1
-            )  # shape batch times latent
-            z1_var_niche_agg = torch.sum(z1_var_niche, dim=1)
-
-            niche_observed_distribution = Normal(
-                z1_mean_niche_agg, z1_var_niche_agg.sqrt()
-            )
-
-        # --------------mixture----------------------------------------------------------
-        # elif self.niche_combination == "mixture":
-        # already computed!
+        # z1_mean_niche_knn = tensors[REGISTRY_KEYS.Z1_MEAN_KNN_KEY]
 
         # POSTERIOR DISTRIBUTION-------------------------------------------------------------------------------
         niche_mean_mat = generative_outputs["niche_mean"]
         niche_var_mat = generative_outputs["niche_variance"]
 
-        # ----------aggregate------------------------------------------------------------
-        if self.niche_combination == "aggregate":
-            niche_mean_mat = niche_weights * niche_mean_mat
-            niche_var_mat = torch.square(niche_weights) * niche_var_mat
-
-            niche_mean_agg = torch.sum(niche_mean_mat, dim=1)
-            niche_var_agg = torch.sum(niche_var_mat, dim=1)
-
-            niche_posterior_distribution = Normal(niche_mean_agg, niche_var_agg.sqrt())
-
-            reconst_loss_niche = kl(
-                niche_posterior_distribution, niche_observed_distribution
-            ).sum(dim=-1)
-
         # --------------Niche mixture posterior distribution--------------------------
-        elif self.niche_combination == "mixture":
-            # reconst_loss_niche = torch.zeros(n_batch).type(torch.float64).to(x.device)
-            # for type in range(
-            #     n_cell_types
-            # ):  # TODO can you replace the for loop with a torch.sum?
-            #     latent_mean_type_prior, latent_var_type_prior = (
-            #         z1_mean_niche[:, type, :].squeeze(),
-            #         z1_var_niche[:, type, :].squeeze(),
-            #     )
-            #     niche_weights_type = niche_weights[:, type].squeeze()
-            #     latent_mean_type_posterior, latent_var_type_posterior = (
-            #         niche_mean_mat[:, type, :].squeeze(),  # batch_size times n_latent
-            #         niche_var_mat[:, type, :].squeeze(),
-            #     )
+        if self.niche_combination == "latent":
+            weighted_reconst_loss_niche = (
+                torch.zeros(n_batch).type(torch.float64).to(x.device)
+            )
+            for type in range(
+                n_cell_types
+            ):  # TODO can you replace the for loop with a torch.sum?
+                latent_mean_type_prior, latent_var_type_prior = (
+                    z1_mean_niche[:, type, :],
+                    z1_var_niche[:, type, :],
+                )
+                niche_weights_type = niche_weights[:, type]
+                latent_mean_type_posterior, latent_var_type_posterior = (
+                    niche_mean_mat[:, type, :],  # batch_size times n_latent
+                    niche_var_mat[:, type, :],
+                )
 
-            #     niche_type_prior_distribution = Normal(
-            #         latent_mean_type_prior, latent_var_type_prior.sqrt()
-            #     )
-            #     niche_type_posterior_distribution = Normal(
-            #         latent_mean_type_posterior, latent_var_type_posterior.sqrt()
-            #     )
+                niche_type_prior_distribution = Normal(
+                    latent_mean_type_prior, latent_var_type_prior.sqrt()
+                )
+                niche_type_posterior_distribution = Normal(
+                    latent_mean_type_posterior, latent_var_type_posterior.sqrt()
+                )
 
-            #     reconst_loss_niche += niche_weights_type * kl(
-            #         niche_type_posterior_distribution, niche_type_prior_distribution
-            #     ).sum(dim=-1)
+                weighted_reconst_loss_niche += niche_weights_type * kl(
+                    niche_type_posterior_distribution, niche_type_prior_distribution
+                ).sum(dim=-1)
 
+        elif self.niche_combination == "observed":
             reconst_loss_niche = (
                 -generative_outputs["niche_expression"]
                 .log_prob(z1_mean_niche)
@@ -658,19 +630,13 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             )
 
         # COMPOSITION LOSS----------------------------------------------------------------
-        true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY] + 1e-4
-        reconstructed_niche_composition = generative_outputs["niche_composition"]
-
-        # if self.compo_transform == "none":
-        #     input_temperature = reconstructed_niche_composition / self.compo_temperature
-        #     composition_loss = F.cross_entropy(
-        #         input=input_temperature, target=true_niche_composition
-        #     )
-
+        true_niche_composition = tensors[REGISTRY_KEYS.NICHE_COMPOSITION_KEY] + epsilon
         true_niche_composition = true_niche_composition / true_niche_composition.sum(
             dim=-1,
             keepdim=True,
         )
+
+        reconstructed_niche_composition = generative_outputs["niche_composition"]
 
         composition_loss = -reconstructed_niche_composition.log_prob(
             true_niche_composition
@@ -698,11 +664,18 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         #     kl_local_for_warmup + kl_local_no_warmup
         # )  # means that we ignore kl_weight warmup
 
+        _weighted_reconst_loss_cell = self.cell_rec_weight * reconst_loss_cell
+        _weighted_reconst_loss_niche = (
+            self.niche_rec_weight * weighted_reconst_loss_niche
+        )
+        _weighted_composition_loss = self.niche_compo_weight * composition_loss
+        _weighted_kl_local = self.latent_kl_weight * weighted_kl_local
+
         loss = torch.mean(
-            self.cell_rec_weight * reconst_loss_cell
-            + self.niche_rec_weight * weighted_reconst_loss_niche
-            + self.niche_compo_weight * composition_loss
-            + self.latent_kl_weight * weighted_kl_local
+            _weighted_reconst_loss_cell
+            + _weighted_reconst_loss_niche
+            + _weighted_kl_local
+            + _weighted_composition_loss
         )
 
         kl_local = {
@@ -714,12 +687,12 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             loss=loss,
             reconstruction_loss=reconst_loss_cell,
             kl_local=kl_local,
-            classification_loss=composition_loss,
-            true_labels=true_niche_composition,
-            logits=reconstructed_niche_composition,
+            # classification_loss=composition_loss,
+            # true_labels=true_niche_composition,
+            # logits=reconstructed_niche_composition,
             extra_metrics={
                 "niche_compo": torch.mean(composition_loss),
-                "niche_reconst": torch.mean(reconst_loss_niche),
+                "niche_reconst": torch.mean(weighted_reconst_loss_niche),
             },
         )
 

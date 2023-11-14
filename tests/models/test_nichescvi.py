@@ -152,10 +152,16 @@ def test_nichevi():
             "niche_rec_weight": 1.0,
             "niche_compo_weight": 1.0,
             "latent_kl_weight": 1.0,
-        }
+        },
+        "r0_kl0_c0_n0": {
+            "cell_rec_weight": 0.0,
+            "niche_rec_weight": 0.0,
+            "niche_compo_weight": 0.0,
+            "latent_kl_weight": 0.0,
+        },
     }
 
-    setup_dict = niche_setup["r1_kl1_c1_n1"]
+    setup_dict = niche_setup["r0_kl0_c0_n0"]
 
     vae = nicheSCVI(
         adata,

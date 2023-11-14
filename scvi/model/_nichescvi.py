@@ -353,9 +353,6 @@ class nicheSCVI(
         batch_key: Optional[str] = None,
         labels_key: Optional[str] = None,
         size_factor_key: Optional[str] = None,
-        # sample_key: Optional[str] = None,
-        # cell_coordinates_key: Optional[str] = None,
-        # k_nn: int = 10,
         latent_mean_key: Optional[str] = None,
         latent_var_key: Optional[str] = None,
         latent_mean_ct_key: Optional[str] = None,
@@ -748,6 +745,7 @@ def get_cell_type_priors(
     latent_mean_key: str,
     latent_var_key: str,
     zero_prior: bool = False,
+    epsilon: float = 1e-6,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute the (non-spatial) prior for each cell type, as the average of the latent space for each cell type.
@@ -779,7 +777,7 @@ def get_cell_type_priors(
     n_latent_z1 = adata.obsm[latent_mean_key].shape[1]
 
     latent_mean_priors = np.zeros((n_cell_types, n_latent_z1))
-    latent_var_priors = np.zeros_like(latent_mean_priors)
+    latent_var_priors = np.zeros_like(latent_mean_priors) + epsilon
 
     if zero_prior:
         return latent_mean_priors, latent_var_priors

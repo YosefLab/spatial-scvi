@@ -19,7 +19,7 @@ from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors, kneighbors_graph
 from scvi.nearest_neighbors import pynndescent
 
-import pingouin as pgs
+import pingouin as pg
 from scipy.stats import mannwhitneyu, ks_2samp, entropy, pearsonr
 from sklearn.metrics import mean_squared_error, mean_absolute_error, roc_auc_score
 
@@ -673,7 +673,20 @@ class SpatialAnalysis:
         validation_only: bool = False,
         metric: Literal["Pearson", "AUC"] = "Pearson",
     ):
-       
+        """
+        Compare neighborhoods between two sets of data and compute a summary score for each set.
+
+        Args:
+            comparison_keys: The keys of the data to compare.
+            reference_key: The key of the reference data. If None, the ct_composition_key is used.
+            train_only: If True, only the train_indices are used for comparison.
+            validation_only: If True, only the validation_indices are used for comparison.
+            metric: The metric to use for comparison. Either "Pearson" or "AUC".
+
+        Returns:
+            A pandas DataFrame containing the summary score for each set of data.
+        """
+
         save_metric_key = "corr_" if metric == "Pearson" else "auc_"
 
         if train_only:
@@ -705,10 +718,10 @@ class SpatialAnalysis:
         neighborhood_ref = adata.obsm[reference_key]
 
         if metric == "AUC":
-            #make sure that the reference is binary
+            # make sure that the reference is binary
             neighborhood_ref = (neighborhood_ref > 0).applymap(int)
             metric_fct = lambda x, y: roc_auc_score(x, y)
-        
+
         else:
             metric_fct = lambda x, y: pearsonr(x, y)[0]
 
