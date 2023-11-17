@@ -21,7 +21,12 @@ from scvi.nearest_neighbors import pynndescent
 
 import pingouin as pg
 from scipy.stats import mannwhitneyu, ks_2samp, entropy, pearsonr
-from sklearn.metrics import mean_squared_error, mean_absolute_error, roc_auc_score
+from sklearn.metrics import (
+    mean_squared_error,
+    mean_absolute_error,
+    roc_auc_score,
+    log_loss,
+)
 
 from dataclasses import dataclass
 
@@ -671,7 +676,7 @@ class SpatialAnalysis:
         reference_key: Optional[str] = None,
         train_only: bool = False,
         validation_only: bool = False,
-        metric: Literal["Pearson", "AUC"] = "Pearson",
+        metric: Literal["Pearson", "AUC", "CE"] = "Pearson",
     ):
         """
         Compare neighborhoods between two sets of data and compute a summary score for each set.
@@ -687,7 +692,24 @@ class SpatialAnalysis:
             A pandas DataFrame containing the summary score for each set of data.
         """
 
-        save_metric_key = "corr_" if metric == "Pearson" else "auc_"
+        if reference_key is None:
+            reference_key = self.ct_composition_key
+
+        neighborhood_ref = adata.obsm[reference_key]
+
+        if metric == "AUC":
+            # make sure that the reference is binary
+            neighborhood_ref = (neighborhood_ref > 0).astype(np.float32)
+            metric_fct = lambda x, y: roc_auc_score(x, y)
+            save_metric_key = "auc_"
+
+        elif metric == "Pearson":
+            metric_fct = lambda x, y: pearsonr(x, y)[0]
+            save_metric_key = "corr_"
+
+        elif metric == "CE":
+            metric_fct = lambda x, y: log_loss(x, y, normalize=True)
+            save_metric_key = "ce_"
 
         if train_only:
             if self.train_indices is None:
@@ -711,19 +733,6 @@ class SpatialAnalysis:
         else:
             adata = self.adata.copy()
             # mode = "all"
-
-        if reference_key is None:
-            reference_key = self.ct_composition_key
-
-        neighborhood_ref = adata.obsm[reference_key]
-
-        if metric == "AUC":
-            # make sure that the reference is binary
-            neighborhood_ref = (neighborhood_ref > 0).astype(np.float32)
-            metric_fct = lambda x, y: roc_auc_score(x, y)
-
-        else:
-            metric_fct = lambda x, y: pearsonr(x, y)[0]
 
         proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(
