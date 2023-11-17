@@ -307,16 +307,16 @@ class nicheSCVI(
             k_nn=k_nn,
         )
 
-        adata.obsm[latent_mean_knn_key] = adata.obsm[latent_mean_key][
-            adata.obsm[niche_indexes_key]
-        ].mean(axis=1)
-
         get_neighborhood_composition(
             adata=adata,
             cell_type_column=label_key,
             indices_key=niche_indexes_key,
             niche_composition_key=niche_composition_key,
         )
+
+        adata.obsm[latent_mean_knn_key] = adata.obsm[latent_mean_key][
+            adata.obsm[niche_indexes_key]
+        ].mean(axis=1)
 
         get_cell_niches(
             adata=adata,

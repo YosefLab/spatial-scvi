@@ -719,7 +719,7 @@ class SpatialAnalysis:
 
         if metric == "AUC":
             # make sure that the reference is binary
-            neighborhood_ref = (neighborhood_ref > 0).applymap(int)
+            neighborhood_ref = (neighborhood_ref > 0).astype(np.float32)
             metric_fct = lambda x, y: roc_auc_score(x, y)
 
         else:
