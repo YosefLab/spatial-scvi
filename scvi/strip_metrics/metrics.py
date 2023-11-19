@@ -25,7 +25,6 @@ from sklearn.metrics import (
     mean_squared_error,
     mean_absolute_error,
     roc_auc_score,
-    log_loss,
 )
 
 from dataclasses import dataclass
@@ -124,6 +123,10 @@ def kl_divergence_set(p: np.array, q_set: np.array, epsilon: float = 1e-7) -> np
     q_set += epsilon
 
     return np.sum(p * np.log(p / q_set), axis=1)
+
+
+def log_loss(y_true, y_pred):
+    return -(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred)).mean()
 
 
 def compute_k_nn(
@@ -323,7 +326,7 @@ class SpatialAnalysis:
 
     def compute_metrics(
         self,
-        k_nn: int = 50,
+        k_nn_range: list[int] = [50],
     ) -> None:
         """
         Compute the spatial metrics.
@@ -334,14 +337,16 @@ class SpatialAnalysis:
             The number of latent neighbors to consider in the spatial analysis.
         """
 
+        self.k_nn_range = k_nn_range
+
         fov_names = self.adata.obs[self.sample_key].unique().tolist()
 
         latent_indexes_dict = {}
 
         # Loop over latent spaces:
         for latent_space_key in self.latent_space_keys:
-            latent_and_phys_corr = []
-            neighborhood_similarity = []
+            latent_and_phys_corr = {k: [] for k in k_nn_range}
+            neighborhood_similarity = {k: [] for k in k_nn_range}
 
             # Loop over fovs:
             for fov in tqdm(fov_names, desc=latent_space_key, colour="blue"):
@@ -351,88 +356,86 @@ class SpatialAnalysis:
                 # knn in latent space
                 cells_in_the_latent_neighborhood = compute_k_nn(
                     adata_fov,
-                    k_nn,
+                    k_nn_range[-1],
                     latent_space_key,
                     method="pynn",
                     n_jobs=-1,
                 )
 
-                if "distance" in self.set_of_metrics:
-                    xy = adata_fov.obsm[self.spatial_coord_key]  # .values
-
-                    spatial_coord_of_latent_neighbors_fov = xy[
-                        cells_in_the_latent_neighborhood
-                    ]
-
-                    # median---------------------------------------------------------------------------
-                    # make this compuation Parallel:
-                    dists_parallel = Parallel(n_jobs=-1)(
-                        delayed(cdist)(
-                            xy[i].reshape(1, 2),
-                            spatial_coord_of_latent_neighbors_fov[i],
-                        )
-                        for i in range(n_cells)
+                for k in k_nn_range:
+                    cells_in_the_latent_neighborhood_k = (
+                        cells_in_the_latent_neighborhood[:, :k]
                     )
 
-                    dists_parallel = np.squeeze(np.array(dists_parallel))
+                    if "distance" in self.set_of_metrics:
+                        xy = adata_fov.obsm[self.spatial_coord_key]  # .values
 
-                    if self.reduction[0] == "median":
-                        reducted_dists = np.median(dists_parallel, axis=-1)
+                        spatial_coord_of_latent_neighbors_fov = xy[
+                            cells_in_the_latent_neighborhood_k
+                        ]
 
-                    if self.reduction[0] == "mean":
-                        reducted_dists = np.mean(dists_parallel, axis=-1)
-
-                    if self.reduction[0] is None:
-                        reducted_dists = dists_parallel
-
-                    latent_and_phys_corr.append(reducted_dists.flatten())
-
-                # similarity between neighborhoods------------------------------
-                if "similarity" in self.set_of_metrics:
-                    # cell types in the neighborhood
-                    ct = adata_fov.obsm[self.ct_composition_key].values
-
-                    similarity_parallel = Parallel(n_jobs=-1)(
-                        delayed(compute_similarity)(
-                            ct[i],
-                            ct[cells_in_the_latent_neighborhood[i]],
-                            self.similarity_metric,
+                        dists_parallel = Parallel(n_jobs=-1)(
+                            delayed(cdist)(
+                                xy[i].reshape(1, 2),
+                                spatial_coord_of_latent_neighbors_fov[i],
+                            )
+                            for i in range(n_cells)
                         )
-                        for i in range(n_cells)
-                    )
 
-                    similarity_parallel = np.squeeze(np.array(similarity_parallel))
+                        dists_parallel = np.squeeze(np.array(dists_parallel))
 
-                    if self.reduction[1] == "median":
-                        reducted_similarity = np.median(similarity_parallel, axis=-1)
+                        if self.reduction[0] == "median":
+                            reducted_dists = np.median(dists_parallel, axis=-1)
 
-                    if self.reduction[1] == "mean":
-                        reducted_similarity = np.mean(similarity_parallel, axis=-1)
+                        if self.reduction[0] == "mean":
+                            reducted_dists = np.mean(dists_parallel, axis=-1)
 
-                    if self.reduction[1] == None:
-                        reducted_similarity = similarity_parallel
+                        if self.reduction[0] is None:
+                            reducted_dists = dists_parallel
 
-                    neighborhood_similarity.append(reducted_similarity.flatten())
+                        latent_and_phys_corr[k].append(reducted_dists.flatten())
+
+                    if "similarity" in self.set_of_metrics:
+                        # cell types in the neighborhood
+                        ct = adata_fov.obsm[self.ct_composition_key].values
+
+                        similarity_parallel = Parallel(n_jobs=-1)(
+                            delayed(compute_similarity)(
+                                ct[i],
+                                ct[cells_in_the_latent_neighborhood_k[i]],
+                                self.similarity_metric,
+                            )
+                            for i in range(n_cells)
+                        )
+
+                        similarity_parallel = np.squeeze(np.array(similarity_parallel))
+
+                        if self.reduction[1] == "median":
+                            reducted_similarity = np.median(
+                                similarity_parallel, axis=-1
+                            )
+
+                        if self.reduction[1] == "mean":
+                            reducted_similarity = np.mean(similarity_parallel, axis=-1)
+
+                        if self.reduction[1] == None:
+                            reducted_similarity = similarity_parallel
+
+                        neighborhood_similarity[k].append(reducted_similarity.flatten())
 
             if "distance" in self.set_of_metrics:
-                self.adata.obs[
-                    KEYS_SPATIAL.DISTANCE_KEY + latent_space_key
-                ] = np.concatenate(latent_and_phys_corr)
-                # rprint(
-                #     "Saved latent and physical correlation in the adata.obs column latent_and_phys_corr_"
-                #     + latent_space_key
-                #     + "."
-                # )
+                for k in k_nn_range:
+                    self.adata.obs[
+                        KEYS_SPATIAL.DISTANCE_KEY + latent_space_key + "_k" + str(k)
+                    ] = np.concatenate(latent_and_phys_corr[k])
 
             if "similarity" in self.set_of_metrics:
-                self.adata.obs[
-                    KEYS_SPATIAL.SIMILARITY_KEY + latent_space_key
-                ] = np.concatenate(neighborhood_similarity)
-                # rprint(
-                #     "Saved compositional neighborhood similarity in the adata.obs column neighborhood_similarity_"
-                #     + latent_space_key
-                #     + "."
-                # )
+                for k in k_nn_range:
+                    self.adata.obs[
+                        KEYS_SPATIAL.SIMILARITY_KEY + latent_space_key + "_k" + str(k)
+                    ] = np.concatenate(neighborhood_similarity[k])
+
+        return None
 
         if "cluster_stats" in self.set_of_metrics:
             if self.leiden_keys is None:
@@ -593,7 +596,7 @@ class SpatialAnalysis:
         self,
         test: Literal["mannwhitneyu", "ks_2samp"] = "mannwhitneyu",
         distribution: Literal["distance", "similarity"] = "distance",
-        plot: bool = True,
+        plot: Optional[int] = None,
     ):
         if distribution == "distance":
             metric = KEYS_SPATIAL.DISTANCE_KEY
@@ -610,34 +613,39 @@ class SpatialAnalysis:
             "validation": self.validation_indices,
         }
 
-        for indices_key, indices in indices_dict.items():
-            x = self.adata.obs[metric + self.z1_reference][indices]
-            p_values = []
-            mean_values = []
-            median_values = []
+        df_sorted = {k: [] for k in self.k_nn_range}
 
-            for latent_key in self.latent_space_keys:
-                y = self.adata.obs[metric + latent_key][indices]
-                mean_values.append(np.mean(y))
-                median_values.append(np.std(y))
-                U1, p = mannwhitneyu(x, y, alternative="two-sided", method="auto")
-                p_values.append(p)
+        for k in self.k_nn_range:
+            for indices_key, indices in indices_dict.items():
+                x = self.adata.obs[metric + self.z1_reference + "_k" + str(k)][indices]
+                p_values = []
+                mean_values = []
+                median_values = []
 
-            reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
+                for latent_key in self.latent_space_keys:
+                    y = self.adata.obs[metric + latent_key + "_k" + str(k)][indices]
+                    mean_values.append(np.mean(y))
+                    median_values.append(np.std(y))
+                    U1, p = mannwhitneyu(x, y, alternative="two-sided", method="auto")
+                    p_values.append(p)
 
-            stat_dict["Mean " + distribution + " " + indices_key] = mean_values
-            stat_dict["Std " + distribution + " " + indices_key] = median_values
-            stat_dict["p-value corrected " + indices_key] = p_values_corr
+                reject, p_values_corr = pg.multicomp(p_values, method="fdr_bh")
 
-        df = pd.DataFrame(stat_dict)
-        df = df.set_index("Model")
-        df = df.round(3)
-        df_sorted = df.sort_values(
-            by="Mean " + distribution + " " + indices_key, ascending=True
-        )
+                stat_dict["Mean " + distribution + " " + indices_key] = mean_values
+                stat_dict["Std " + distribution + " " + indices_key] = median_values
+                stat_dict["p-value corrected " + indices_key] = p_values_corr
+
+            df = pd.DataFrame(stat_dict)
+            df = df.set_index("Model")
+            df = df.round(3)
+            df_sorted_k = df.sort_values(
+                by="Mean " + distribution + " " + indices_key, ascending=True
+            )
+
+            df_sorted[k] = df_sorted_k
 
         if plot:
-            df = df_sorted
+            df = df_sorted[plot]
             # Set the x-axis locations
             x = range(len(df))
             # Specify the bar width
@@ -662,7 +670,7 @@ class SpatialAnalysis:
             )
             plt.xlabel("Setup")
             plt.ylabel("Mean " + distribution)
-            plt.title("Means with Standard Deviation Error Bars")
+            plt.title("Means with Standard Deviation Error Bars, k=" + str(plot))
             plt.xticks([i + bar_width / 2 for i in x], df.index, rotation=75)
             plt.legend()
             plt.grid()
@@ -692,25 +700,6 @@ class SpatialAnalysis:
             A pandas DataFrame containing the summary score for each set of data.
         """
 
-        if reference_key is None:
-            reference_key = self.ct_composition_key
-
-        neighborhood_ref = adata.obsm[reference_key]
-
-        if metric == "AUC":
-            # make sure that the reference is binary
-            neighborhood_ref = (neighborhood_ref > 0).astype(np.float32)
-            metric_fct = lambda x, y: roc_auc_score(x, y)
-            save_metric_key = "auc_"
-
-        elif metric == "Pearson":
-            metric_fct = lambda x, y: pearsonr(x, y)[0]
-            save_metric_key = "corr_"
-
-        elif metric == "CE":
-            metric_fct = lambda x, y: log_loss(x, y, normalize=True)
-            save_metric_key = "ce_"
-
         if train_only:
             if self.train_indices is None:
                 raise ValueError(
@@ -718,7 +707,7 @@ class SpatialAnalysis:
                 )
             else:
                 adata = self.adata[self.train_indices].copy()
-                save_metric_key = "train_" + save_metric_key
+                save_metric_key = "train_"
                 mode = "train"
 
         if validation_only:
@@ -728,11 +717,30 @@ class SpatialAnalysis:
                 )
             else:
                 adata = self.adata[self.validation_indices].copy()
-                save_metric_key = "val_" + save_metric_key
+                save_metric_key = "val_"
                 mode = "validation"
         else:
             adata = self.adata.copy()
             # mode = "all"
+
+        if reference_key is None:
+            reference_key = self.ct_composition_key
+
+        neighborhood_ref = adata.obsm[reference_key]
+
+        if metric == "AUC":
+            # make sure that the reference is binary
+            neighborhood_ref = (neighborhood_ref > 0).astype(np.float32)
+            metric_fct = lambda x, y: roc_auc_score(x, y)
+            save_metric_key += "auc_"
+
+        elif metric == "Pearson":
+            metric_fct = lambda x, y: pearsonr(x, y)[0]
+            save_metric_key += "corr_"
+
+        elif metric == "CE":
+            metric_fct = lambda x, y: log_loss(x, y)
+            save_metric_key += "ce_"
 
         proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(

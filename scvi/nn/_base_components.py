@@ -507,6 +507,7 @@ class Decoder(nn.Module):
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,
+        dropout_rate: float = 0.0,
         **kwargs,
     ):
         super().__init__()
@@ -516,7 +517,7 @@ class Decoder(nn.Module):
             n_cat_list=n_cat_list,
             n_layers=n_layers,
             n_hidden=n_hidden,
-            dropout_rate=0,
+            dropout_rate=dropout_rate,
             **kwargs,
         )
 
