@@ -6,7 +6,11 @@ from scipy.sparse import csr_matrix
 
 
 def pynndescent(
-    X: np.ndarray, n_neighbors: int, random_state: int = 0, n_jobs: int = -1
+    X: np.ndarray,
+    n_neighbors: int,
+    random_state: int = 0,
+    n_jobs: int = -1,
+    return_distance: bool = False,
 ) -> csr_matrix:
     """Run pynndescent approximate nearest neighbor search.
 
@@ -38,6 +42,10 @@ def pynndescent(
         n_iters=n_iters,
         max_candidates=max_candidates,
     )
-    indices, _ = knn_search_index.neighbor_graph
+    indices, distances = knn_search_index.neighbor_graph
 
-    return indices
+    if return_distance:
+        return indices, distances
+
+    else:
+        return indices

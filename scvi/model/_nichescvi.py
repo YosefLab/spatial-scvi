@@ -314,10 +314,6 @@ class nicheSCVI(
             niche_composition_key=niche_composition_key,
         )
 
-        adata.obsm[latent_mean_knn_key] = adata.obsm[latent_mean_key][
-            adata.obsm[niche_indexes_key]
-        ].mean(axis=1)
-
         get_cell_niches(
             adata=adata,
             cell_types_to_include=cell_type_for_niches,
@@ -325,6 +321,10 @@ class nicheSCVI(
             niche_type_key=niche_type_key,
             niche_composition_key=niche_composition_key,
         )
+
+        adata.obsm[latent_mean_knn_key] = adata.obsm[latent_mean_key][
+            adata.obsm[niche_indexes_key]
+        ].mean(axis=1)
 
         get_average_latent_per_celltype(
             adata=adata,
