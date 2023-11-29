@@ -253,6 +253,8 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_encoder_kwargs,
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
+        self.n_latent_niche = n_latent // 2
+        n_input_decoder_niche = self.n_latent_niche + n_continuous_cov
         n_input_decoder = n_latent + n_continuous_cov
         _extra_decoder_kwargs = extra_decoder_kwargs or {}
         self.decoder = DecoderSCVI(
@@ -272,7 +274,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             n_cell_types if niche_components.startswith("cell_type") else k_nn
         )
         self.niche_decoder = NicheDecoder(
-            n_input=n_input_decoder,
+            n_input=n_input_decoder_niche,
             n_output=n_latent_z1,
             n_niche_components=self.n_niche_components,
             n_cat_list=cat_list,
@@ -285,7 +287,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         )
 
         self.composition_decoder = DirichletDecoder(
-            n_input_decoder,
+            n_input_decoder_niche,
             n_cell_types,
             n_cat_list=cat_list,
             n_layers=n_layers_compo,
@@ -461,14 +463,21 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         """Runs the generative model."""
         # TODO: refactor forward function to not rely on y
         # Likelihood distribution
+        z_niche = z[..., : self.n_latent_niche]
         if cont_covs is None:
             decoder_input = z
+            decoder_input_niche = z_niche
         elif z.dim() != cont_covs.dim():
             decoder_input = torch.cat(
                 [z, cont_covs.unsqueeze(0).expand(z.size(0), -1, -1)], dim=-1
             )
+            decoder_input_niche = torch.cat(
+                [z_niche, cont_covs.unsqueeze(0).expand(z_niche.size(0), -1, -1)],
+                dim=-1,
+            )
         else:
             decoder_input = torch.cat([z, cont_covs], dim=-1)
+            decoder_input_niche = torch.cat([z_niche, cont_covs], dim=-1)
 
         if cat_covs is not None:
             categorical_input = torch.split(cat_covs, 1, dim=1)
@@ -524,13 +533,13 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
         niche_mean, niche_variance = self.niche_decoder(
-            decoder_input, batch_index, *categorical_input
+            decoder_input_niche, batch_index, *categorical_input
         )
 
         niche_expression = Normal(niche_mean, niche_variance.sqrt())
 
         niche_composition = self.composition_decoder(
-            decoder_input, batch_index, *categorical_input
+            decoder_input_niche, batch_index, *categorical_input
         )  # if DirichletDecoder, niche_composition is a distribution
 
         return {

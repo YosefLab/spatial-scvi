@@ -204,7 +204,7 @@ class nicheSCVI(
             outputs = self.module.inference(**inference_inputs)
 
             batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
-            decoder_input = outputs["qz"].loc
+            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_mean]
 
             # put batch_index in the same device as decoder_input
             batch_index = batch_index.to(decoder_input.device)
@@ -251,7 +251,7 @@ class nicheSCVI(
             outputs = self.module.inference(**inference_inputs)
 
             batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
-            decoder_input = outputs["qz"].loc
+            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_mean]
 
             # put batch_index in the same device as decoder_input
             batch_index = batch_index.to(decoder_input.device)

@@ -170,7 +170,7 @@ def test_nichevi():
         niche_compo_weight=setup_dict["niche_compo_weight"],
         latent_kl_weight=setup_dict["latent_kl_weight"],
         niche_components="cell_type_unweighted",
-        niche_combination="mixture",
+        niche_combination="observed",
         gene_likelihood=LIKELIHOOD,
         n_layers=N_LAYERS,
         n_latent=N_LATENT,
