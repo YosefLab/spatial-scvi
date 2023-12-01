@@ -532,6 +532,88 @@ class SpatialAnalysis:
 
         return None
 
+    def boxplot_metrics(
+        self,
+        metric: Literal[*SET_OF_METRICS],
+        reference_key: Optional[str] = None,
+        comparison_key: Optional[str] = None,
+        validation_only: bool = True,
+        train_only: bool = False,
+    ):
+        if metric == "distance":
+            metric_key = KEYS_SPATIAL.DISTANCE_KEY
+            metric_title = self.reduction[0] + " " + METRIC_TITLE.DISTANCE_KEY
+        if metric == "similarity":
+            metric_key = KEYS_SPATIAL.SIMILARITY_KEY
+            metric_title = (
+                self.reduction[1]
+                + " "
+                + self.similarity_metric
+                + " "
+                + METRIC_TITLE.SIMILARITY_KEY
+            )
+
+        if reference_key is None:
+            reference_key = self.z1_reference
+
+        if validation_only:
+            indices = self.validation_indices
+        elif train_only:
+            indices = self.train_indices
+        else:
+            indices = [*range(len(self.adata))]
+
+        data = {
+            "k="
+            + str(k): (
+                self.adata.obs[metric_key + reference_key + "_k" + str(k)][indices],
+                self.adata.obs[metric_key + comparison_key + "_k" + str(k)][indices],
+            )
+            for k in self.k_nn_range
+        }
+
+        # Create individual subplots for each key
+        fig, axes = plt.subplots(1, len(data), figsize=(12, 5), sharey=True)
+
+        linewidth = 1.5
+
+        # Plot boxplots for each key
+        for (key, (series1, series2)), ax in zip(data.items(), axes):
+            boxprops = dict(color="blue", linewidth=linewidth)
+            medianprops = dict(color="blue", linewidth=linewidth)
+            whiskerprops = dict(color="blue", linewidth=linewidth)
+            capprops = dict(color="blue", linewidth=linewidth)
+
+            # Plot boxplots
+            ax.boxplot(
+                [series1, series2],
+                boxprops=boxprops,
+                medianprops=medianprops,
+                whiskerprops=whiskerprops,
+                capprops=capprops,
+                showmeans=True,
+                meanline=True,
+            )
+
+            # # Add a dashed line for the mean
+            # mean_line = ax.lines[-2]  # The line corresponding to the mean
+            # mean_line.set_linestyle("--")
+
+            ax.set_title(key)
+
+            # Add grid
+            ax.grid(True, linestyle="--", alpha=0.7)
+
+            # Set xticks
+            ax.set_xticks([1, 2])
+            ax.set_xticklabels([reference_key, comparison_key], rotation=80)
+
+        # Add labels and title
+        fig.suptitle(metric_title)
+        plt.show()
+
+        return None
+
     def plot_metrics(
         self,
         metric: Literal[*SET_OF_METRICS],
@@ -684,7 +766,7 @@ class SpatialAnalysis:
         reference_key: Optional[str] = None,
         train_only: bool = False,
         validation_only: bool = False,
-        metric: Literal["Pearson", "AUC", "CE"] = "Pearson",
+        metric: Literal["Pearson", "AUC", "BCE", "CE"] = "Pearson",
     ):
         """
         Compare neighborhoods between two sets of data and compute a summary score for each set.
@@ -738,9 +820,63 @@ class SpatialAnalysis:
             metric_fct = lambda x, y: pearsonr(x, y)[0]
             save_metric_key += "corr_"
 
-        elif metric == "CE":
+        elif metric == "BCE":
             metric_fct = lambda x, y: log_loss(x, y)
+            save_metric_key += "bce_"
+
+        elif metric == "CE":
+            metric_fct = lambda x, y: entropy(x, y, axis=1)
             save_metric_key += "ce_"
+
+            ce_keys = []
+            ce_keys_mean = []
+
+            for key in comparison_keys:
+                neighborhood_pred = adata.obsm[key]
+
+                CE = metric_fct(neighborhood_ref, neighborhood_pred)
+                ce_keys.append(CE)
+                ce_keys_mean.append(np.mean(CE))
+                self.adata.uns[save_metric_key + key] = CE  # optional
+
+            # Create a single subplot for all series
+            fig, ax = plt.subplots(figsize=(15, 6))
+
+            linewidth = 1.5
+            boxprops = dict(color="blue", linewidth=linewidth)
+            medianprops = dict(color="blue", linewidth=linewidth)
+            whiskerprops = dict(color="blue", linewidth=linewidth)
+            capprops = dict(color="blue", linewidth=linewidth)
+
+            # Plot boxplots
+            ax.boxplot(
+                ce_keys,
+                boxprops=boxprops,
+                medianprops=medianprops,
+                whiskerprops=whiskerprops,
+                capprops=capprops,
+                showmeans=True,
+                meanline=True,
+            )
+
+            # Add titles, labels, and grid
+            ax.set_title("Cross-entropy over cells")
+            ax.set_xticks(range(1, len(ce_keys) + 1))
+            ax.set_xticklabels([key for key in comparison_keys], rotation=80)
+            ax.set_xlabel("Model")
+            ax.set_ylabel("Cross-entropy")
+            ax.grid(True, linestyle="--", alpha=0.7)
+
+            plt.show()
+
+            df_summary = pd.DataFrame(
+                {
+                    "Model": comparison_keys,
+                    mode + " " + metric + " ": ce_keys_mean,
+                }
+            )
+
+            return df_summary
 
         proportions_ref = adata.obs[self.label_key].value_counts() / len(adata)
         proportions_ref_series = pd.Series(
