@@ -539,6 +539,7 @@ class SpatialAnalysis:
         comparison_key: Optional[str] = None,
         validation_only: bool = True,
         train_only: bool = False,
+        plot_type: Literal["kde", "ecdf", "boxplot", "hist"] = "boxplot",
     ):
         if metric == "distance":
             metric_key = KEYS_SPATIAL.DISTANCE_KEY
@@ -575,38 +576,123 @@ class SpatialAnalysis:
         # Create individual subplots for each key
         fig, axes = plt.subplots(1, len(data), figsize=(12, 5), sharey=True)
 
-        linewidth = 1.5
+        if plot_type == "boxplot":
+            linewidth = 1.5
 
-        # Plot boxplots for each key
-        for (key, (series1, series2)), ax in zip(data.items(), axes):
-            boxprops = dict(color="blue", linewidth=linewidth)
-            medianprops = dict(color="blue", linewidth=linewidth)
-            whiskerprops = dict(color="blue", linewidth=linewidth)
-            capprops = dict(color="blue", linewidth=linewidth)
+            # Plot boxplots for each key
+            for (key, (series1, series2)), ax in zip(data.items(), axes):
+                boxprops = dict(color="blue", linewidth=linewidth)
+                medianprops = dict(color="blue", linewidth=linewidth)
+                whiskerprops = dict(color="blue", linewidth=linewidth)
+                capprops = dict(color="blue", linewidth=linewidth)
 
-            # Plot boxplots
-            ax.boxplot(
-                [series1, series2],
-                boxprops=boxprops,
-                medianprops=medianprops,
-                whiskerprops=whiskerprops,
-                capprops=capprops,
-                showmeans=True,
-                meanline=True,
+                # Plot boxplots
+                ax.boxplot(
+                    [series1, series2],
+                    boxprops=boxprops,
+                    medianprops=medianprops,
+                    whiskerprops=whiskerprops,
+                    capprops=capprops,
+                    showmeans=True,
+                    meanline=True,
+                )
+
+                # # Add a dashed line for the mean
+                # mean_line = ax.lines[-2]  # The line corresponding to the mean
+                # mean_line.set_linestyle("--")
+
+                ax.set_title(key)
+
+                # Add grid
+                ax.grid(True, linestyle="--", alpha=0.7)
+
+                # Set xticks
+                ax.set_xticks([1, 2])
+                ax.set_xticklabels([reference_key, comparison_key], rotation=80)
+
+        if plot_type == "hist":
+            for (key, (series1, series2)), ax in zip(data.items(), axes):
+                differences = series2 - series1
+
+                # Plot histogram
+                ax.hist(differences, bins=50, color="blue", alpha=0.7)
+
+                # Add a title (you may customize this based on your data)
+                ax.set_title(f"Differences for {key}")
+
+                # Add labels
+                ax.set_xlabel("Differences")
+                ax.set_ylabel("Frequency")
+
+                # Add grid
+                ax.grid(True, linestyle="--", alpha=0.7)
+
+                # Add a common y-axis label
+                axes[0].set_ylabel("Frequency")
+
+                # Adjust layout to prevent clipping of ylabel
+                plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+        if plot_type == "entropy":
+            ct_entropy = entropy(
+                self.adata.obsm[self.ct_composition_key].values[indices], axis=1
             )
+            for (key, (series1, series2)), ax in zip(data.items(), axes):
+                # Plot series2 metric against entropy
+                ax.scatter(series2, ct_entropy, color="blue", alpha=0.5)
 
-            # # Add a dashed line for the mean
-            # mean_line = ax.lines[-2]  # The line corresponding to the mean
-            # mean_line.set_linestyle("--")
+                # Add a title (you may customize this based on your data)
+                ax.set_title(f"{key}")
 
-            ax.set_title(key)
+                # Add labels
+                ax.set_ylabel("Entropy")
+                ax.set_xlabel(metric_title)
 
-            # Add grid
-            ax.grid(True, linestyle="--", alpha=0.7)
+                # Add grid
+                ax.grid(True, linestyle="--", alpha=0.7)
 
-            # Set xticks
-            ax.set_xticks([1, 2])
-            ax.set_xticklabels([reference_key, comparison_key], rotation=80)
+                # Adjust layout to prevent clipping of ylabel
+                plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+        if plot_type == "barplot":
+            df_ct_pos = {}
+            df_ct_neg = {}
+            for (key, (series1, series2)), ax in zip(data.items(), axes):
+                differences = series2 - series1
+
+                # count the number of values for which the difference is positive, negative
+                positive = np.sum(differences > 0)
+                negative = np.sum(differences < 0)
+
+                # Count the cell types for which the difference is positive:
+                ct = self.adata.obs[self.label_key][indices]
+
+                # for each cell type compute the fraction of positive and negative differences
+
+                ct_positive = ct[differences > 0].value_counts(sort=False)
+                ct_negative = ct[differences < 0].value_counts(sort=False)
+                df_ct_neg[key] = ct_negative / ct.value_counts(sort=False)
+                df_ct_pos[key] = ct_positive / ct.value_counts(sort=False)
+
+                # Plot bar chart
+                ax.bar(
+                    ["Positive", "Negative"],
+                    [positive, negative],
+                    color=["green", "red"],
+                )
+
+                # Add a title
+                ax.set_title(f"Difference for {key}")
+
+            # Add a common y-axis label
+            axes[0].set_ylabel("Count")
+
+            rprint("Positive differences:")
+            df_ct_pos = pd.DataFrame(df_ct_pos)
+            rprint(df_ct_pos.sort_values(by=df_ct_pos.columns[-1], ascending=False))
+            rprint("Negative differences:")
+            df_ct_neg = pd.DataFrame(df_ct_neg)
+            rprint(df_ct_neg.sort_values(by=df_ct_neg.columns[-1], ascending=False))
 
         # Add labels and title
         fig.suptitle(metric_title)
