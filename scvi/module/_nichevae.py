@@ -108,7 +108,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         self,
         n_input: int,
         ###########
-        n_latent_z1: int,
+        n_output_niche: int,
         n_cell_types: Optional[int],
         k_nn: Optional[int],
         niche_components: Literal[
@@ -167,7 +167,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         self.niche_combination = niche_combination
         self.compo_transform = compo_transform
         self.compo_temperature = compo_temperature
-        self.n_latent_z1 = n_latent_z1
+        self.n_output_niche = n_output_niche
 
         self.n_cats_per_cov = n_cats_per_cov
         self.dispersion = dispersion
@@ -253,7 +253,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             **_extra_encoder_kwargs,
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.n_latent_niche = n_latent // 2
+        self.n_latent_niche = n_latent // 1
         n_input_decoder_niche = self.n_latent_niche + n_continuous_cov
         n_input_decoder = n_latent + n_continuous_cov
         _extra_decoder_kwargs = extra_decoder_kwargs or {}
@@ -275,7 +275,7 @@ class nicheVAE(BaseMinifiedModeModuleClass):
         )
         self.niche_decoder = NicheDecoder(
             n_input=n_input_decoder_niche,
-            n_output=n_latent_z1,
+            n_output=n_output_niche,
             n_niche_components=self.n_niche_components,
             n_cat_list=cat_list,
             n_layers=n_layers_niche,
@@ -536,7 +536,8 @@ class nicheVAE(BaseMinifiedModeModuleClass):
             decoder_input_niche, batch_index, *categorical_input
         )
 
-        niche_expression = Normal(niche_mean, niche_variance.sqrt())
+        # niche_expression = Normal(niche_mean, niche_variance.sqrt())
+        niche_expression = torch.distributions.Poisson(niche_variance)
 
         niche_composition = self.composition_decoder(
             decoder_input_niche, batch_index, *categorical_input

@@ -150,9 +150,7 @@ class nicheSCVI(
             ###########
             n_cell_types=self.n_cell_types,
             k_nn=self.k_nn,
-            n_latent_z1=self.n_latent_mean,
             ###########
-            # niche_kl_weight=niche_kl_weight,
             n_batch=n_batch,
             n_labels=self.summary_stats.n_labels,
             n_continuous_cov=self.summary_stats.get("n_extra_continuous_covs", 0),
@@ -204,7 +202,7 @@ class nicheSCVI(
             outputs = self.module.inference(**inference_inputs)
 
             batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
-            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_mean]
+            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_niche]
 
             # put batch_index in the same device as decoder_input
             batch_index = batch_index.to(decoder_input.device)
@@ -251,7 +249,7 @@ class nicheSCVI(
             outputs = self.module.inference(**inference_inputs)
 
             batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
-            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_mean]
+            decoder_input = outputs["qz"].loc[..., : self.module.n_latent_niche]
 
             # put batch_index in the same device as decoder_input
             batch_index = batch_index.to(decoder_input.device)
